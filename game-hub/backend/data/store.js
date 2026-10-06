@@ -3,7 +3,7 @@ const users = [
     id: 'admin-user',
     username: 'admin',
     email: 'admin@example.com',
-    passwordHash: '$2a$10$u9sGiJXZ4C.nvXElRr3V4eY90F4D2P9ylqD6rI2kgbo1i5fQL7f6q',
+    passwordHash: '$2a$10$sIoNUpJ63TE4m3NS/Yirq.G7YeNcmhP3WaqKbHlAtP//69VdyC6rG',
     role: 'admin',
     points: 2500,
     level: 7,

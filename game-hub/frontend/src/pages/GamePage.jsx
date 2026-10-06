@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom';
+import MemoryGame from '../games/MemoryGame';
 import TicTacToe from '../games/TicTacToe';
 import RockPaperScissors from '../games/RockPaperScissors';
 import NumberGuess from '../games/NumberGuess';
@@ -7,6 +8,7 @@ const gamesMap = {
   'tic-tac-toe': TicTacToe,
   'rock-paper-scissors': RockPaperScissors,
   'number-guess': NumberGuess,
+  memory: MemoryGame,
 };
 
 const GamePage = () => {
