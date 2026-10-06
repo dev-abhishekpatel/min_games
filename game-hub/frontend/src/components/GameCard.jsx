@@ -4,15 +4,25 @@ const GameCard = ({ game }) => (
   <div className="game-card">
     <div className="game-card-top">
       <span className="tag">{game.category}</span>
-      <span className="difficulty">{game.difficulty}</span>
+      {game.badge && <span className="game-badge">{game.badge}</span>}
+      <span className={`difficulty ${game.difficulty}`}>{game.difficulty}</span>
     </div>
     <h3>{game.name}</h3>
     <p>{game.description}</p>
     <div className="meta-row">
-      <span>{game.players} player{game.players > 1 ? 's' : ''}</span>
-      <span>{game.active ? 'Active' : 'Coming soon'}</span>
+      <span>👥 {game.players === 2 ? '1v1 / Live' : 'Single Player'}</span>
+      <span className="status-dot">🟢 Ready</span>
     </div>
-    <Link to={`/games/${game.slug}`} className="primary-btn">Play Now</Link>
+    <div className="card-actions">
+      <Link to={`/games/${game.slug}`} className="primary-btn play-card-btn">
+        ▶️ Play Now
+      </Link>
+      {game.players === 2 && (
+        <Link to="/live" className="secondary-btn live-card-btn" title="Play 1v1 Live Multiplayer">
+          ⚡ 1v1 Live
+        </Link>
+      )}
+    </div>
   </div>
 );
 

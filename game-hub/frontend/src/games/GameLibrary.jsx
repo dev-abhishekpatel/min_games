@@ -1,43 +1,636 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../services/api';
-
-const WIN_LINES = [
-  [0, 1, 2],
-  [3, 4, 5],
-  [6, 7, 8],
-  [0, 3, 6],
-  [1, 4, 7],
-  [2, 5, 8],
-  [0, 4, 8],
-  [2, 4, 6],
-];
+import sounds from '../services/soundEffects';
 
 const shuffleArray = (items) => [...items].sort(() => Math.random() - 0.5);
 const randomFrom = (items) => items[Math.floor(Math.random() * items.length)];
 
+// 1. CONNECT FOUR
+const ConnectFourGame = () => {
+  const ROWS = 6;
+  const COLS = 7;
+  const [board, setBoard] = useState(Array(ROWS * COLS).fill(null));
+  const [turn, setTurn] = useState('P1'); // P1 (Red) vs P2/AI (Yellow)
+  const [isAiMode, setIsAiMode] = useState(true);
+  const [winner, setWinner] = useState(null);
+  const [winningCells, setWinningCells] = useState([]);
+  const [scores, setScores] = useState({ P1: 0, P2: 0 });
+
+  const checkWinner = (grid) => {
+    const getCell = (r, c) => grid[r * COLS + c];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const val = getCell(r, c);
+        if (!val) continue;
+        if (c + 3 < COLS && val === getCell(r, c + 1) && val === getCell(r, c + 2) && val === getCell(r, c + 3))
+          return { winner: val, line: [r * COLS + c, r * COLS + c + 1, r * COLS + c + 2, r * COLS + c + 3] };
+        if (r + 3 < ROWS && val === getCell(r + 1, c) && val === getCell(r + 2, c) && val === getCell(r + 3, c))
+          return { winner: val, line: [r * COLS + c, (r + 1) * COLS + c, (r + 2) * COLS + c, (r + 3) * COLS + c] };
+        if (r + 3 < ROWS && c + 3 < COLS && val === getCell(r + 1, c + 1) && val === getCell(r + 2, c + 2) && val === getCell(r + 3, c + 3))
+          return { winner: val, line: [r * COLS + c, (r + 1) * COLS + (c + 1), (r + 2) * COLS + (c + 2), (r + 3) * COLS + (c + 3)] };
+        if (r + 3 < ROWS && c - 3 >= 0 && val === getCell(r + 1, c - 1) && val === getCell(r + 2, c - 2) && val === getCell(r + 3, c - 3))
+          return { winner: val, line: [r * COLS + c, (r + 1) * COLS + (c - 1), (r + 2) * COLS + (c - 2), (r + 3) * COLS + (c - 3)] };
+      }
+    }
+    if (grid.every(Boolean)) return { winner: 'Draw', line: [] };
+    return null;
+  };
+
+  const dropDisc = (col, currentBoard, player) => {
+    let targetRow = -1;
+    for (let r = ROWS - 1; r >= 0; r--) {
+      if (currentBoard[r * COLS + col] === null) {
+        targetRow = r;
+        break;
+      }
+    }
+    if (targetRow === -1) return null;
+
+    const nextBoard = [...currentBoard];
+    nextBoard[targetRow * COLS + col] = player;
+    sounds.playDrop();
+    return nextBoard;
+  };
+
+  const handleColumnClick = (col) => {
+    if (winner || (isAiMode && turn === 'P2')) return;
+
+    const nextBoard = dropDisc(col, board, 'P1');
+    if (!nextBoard) return;
+
+    setBoard(nextBoard);
+    const winResult = checkWinner(nextBoard);
+
+    if (winResult) {
+      setWinner(winResult.winner);
+      setWinningCells(winResult.line);
+      if (winResult.winner === 'P1') {
+        sounds.playWin();
+        setScores((prev) => ({ ...prev, P1: prev.P1 + 1 }));
+      }
+      return;
+    }
+
+    if (isAiMode) {
+      setTurn('P2');
+      setTimeout(() => {
+        const validCols = [];
+        for (let c = 0; c < COLS; c++) {
+          if (nextBoard[c] === null) validCols.push(c);
+        }
+        if (validCols.length > 0) {
+          const aiCol = randomFrom(validCols);
+          const aiBoard = dropDisc(aiCol, nextBoard, 'P2');
+          if (aiBoard) {
+            setBoard(aiBoard);
+            const aiWin = checkWinner(aiBoard);
+            if (aiWin) {
+              setWinner(aiWin.winner);
+              setWinningCells(aiWin.line);
+              if (aiWin.winner === 'P2') {
+                sounds.playLose();
+                setScores((prev) => ({ ...prev, P2: prev.P2 + 1 }));
+              }
+            } else {
+              setTurn('P1');
+            }
+          }
+        }
+      }, 500);
+    } else {
+      setTurn(turn === 'P1' ? 'P2' : 'P1');
+    }
+  };
+
+  const resetGame = () => {
+    setBoard(Array(ROWS * COLS).fill(null));
+    setWinner(null);
+    setWinningCells([]);
+    setTurn('P1');
+    sounds.playClick();
+  };
+
+  const saveScore = async () => {
+    try {
+      await api.post('/scores', {
+        game: 'connect-four',
+        score: scores.P1 * 100,
+        result: winner === 'P1' ? 'win' : 'attempted',
+        duration: 45,
+      });
+      alert('Connect Four score saved!');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  return (
+    <div className="game-page">
+      <div className="game-header">
+        <h2>🔴 Connect Four</h2>
+        <button className="pill-btn" onClick={() => setIsAiMode(!isAiMode)}>
+          Mode: {isAiMode ? '🤖 VS AI' : '👥 Pass & Play'}
+        </button>
+      </div>
+
+      <div className="score-row">
+        <span className="player-badge p1">P1 (Red): {scores.P1}</span>
+        <span className="turn-indicator">
+          {winner ? (winner === 'Draw' ? 'It’s a Draw!' : `Winner: ${winner === 'P1' ? 'P1 Red' : 'P2 Yellow'}! 🎉`) : `Turn: ${turn === 'P1' ? 'Red' : 'Yellow'}`}
+        </span>
+        <span className="player-badge p2">{isAiMode ? 'AI (Yellow)' : 'P2 (Yellow)'}: {scores.P2}</span>
+      </div>
+
+      <div className="c4-grid">
+        {Array.from({ length: COLS }, (_, colIdx) => (
+          <div key={colIdx} className="c4-col" onClick={() => handleColumnClick(colIdx)}>
+            {Array.from({ length: ROWS }, (_, rowIdx) => {
+              const cellIdx = rowIdx * COLS + colIdx;
+              const val = board[cellIdx];
+              const isWinning = winningCells.includes(cellIdx);
+              return (
+                <div key={cellIdx} className={`c4-cell ${val ? val.toLowerCase() : ''} ${isWinning ? 'winning' : ''}`}>
+                  <div className="c4-disc" />
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      <div className="game-actions">
+        <button className="secondary-btn" onClick={resetGame}>🔄 Reset Board</button>
+        <button className="primary-btn" onClick={saveScore}>⭐ Save High Score</button>
+      </div>
+    </div>
+  );
+};
+
+// 2. SPEED TYPER RUSH
+const SpeedTyperGame = () => {
+  const TYPING_PASSAGES = [
+    "Fast typing requires focus, precision, and quick muscle memory to master.",
+    "Technology empowers developers to build incredible real-time game experiences.",
+    "Challenge your friends online, climb global leaderboards, and achieve victory.",
+    "Practice every day to double your words per minute and stay ahead of rivals."
+  ];
+
+  const [targetText, setTargetText] = useState(() => randomFrom(TYPING_PASSAGES));
+  const [inputVal, setInputVal] = useState('');
+  const [startTime, setStartTime] = useState(null);
+  const [wpm, setWpm] = useState(0);
+  const [accuracy, setAccuracy] = useState(100);
+  const [completed, setCompleted] = useState(false);
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+    if (completed) return;
+
+    if (!startTime) setStartTime(Date.now());
+    setInputVal(val);
+    sounds.playClick();
+
+    // Calculate accuracy
+    let correct = 0;
+    for (let i = 0; i < val.length; i++) {
+      if (val[i] === targetText[i]) correct++;
+    }
+    const acc = val.length > 0 ? Math.round((correct / val.length) * 100) : 100;
+    setAccuracy(acc);
+
+    // Check completion
+    if (val === targetText) {
+      setCompleted(true);
+      sounds.playWin();
+      const elapsedMins = (Date.now() - (startTime || Date.now())) / 60000;
+      const calculatedWpm = Math.round((targetText.split(' ').length / Math.max(elapsedMins, 0.05)));
+      setWpm(calculatedWpm);
+    } else if (startTime) {
+      const elapsedMins = (Date.now() - startTime) / 60000;
+      const wordsTyped = val.trim().split(/\s+/).filter(Boolean).length;
+      setWpm(Math.round(wordsTyped / Math.max(elapsedMins, 0.02)));
+    }
+  };
+
+  const restart = () => {
+    setTargetText(randomFrom(TYPING_PASSAGES));
+    setInputVal('');
+    setStartTime(null);
+    setWpm(0);
+    setAccuracy(100);
+    setCompleted(false);
+  };
+
+  const saveScore = async () => {
+    try {
+      await api.post('/scores', {
+        game: 'speed-typer',
+        score: wpm * 10,
+        result: completed ? 'win' : 'attempted',
+        duration: 30,
+      });
+      alert(`Saved WPM Score: ${wpm} WPM!`);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  return (
+    <div className="game-page">
+      <h2>⚡ Speed Typer</h2>
+      <p>Type the target passage as fast as possible with high accuracy!</p>
+
+      <div className="typer-passage">
+        {targetText.split('').map((char, index) => {
+          let color = 'var(--text-soft)';
+          if (index < inputVal.length) {
+            color = inputVal[index] === char ? '#10b981' : '#ef4444';
+          }
+          return (
+            <span key={index} style={{ color, borderBottom: index === inputVal.length ? '2px solid var(--primary)' : 'none' }}>
+              {char}
+            </span>
+          );
+        })}
+      </div>
+
+      <textarea
+        className="typer-input"
+        rows={3}
+        value={inputVal}
+        onChange={handleChange}
+        placeholder="Start typing here..."
+        disabled={completed}
+      />
+
+      <div className="stats-grid">
+        <div className="stat-card">
+          <span className="stat-label">Speed</span>
+          <span className="stat-val">{wpm} <small>WPM</small></span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-label">Accuracy</span>
+          <span className="stat-val">{accuracy}%</span>
+        </div>
+      </div>
+
+      {completed && <div className="success-box">🎉 Phenomenal! Completed at {wpm} WPM!</div>}
+
+      <div className="game-actions">
+        <button className="secondary-btn" onClick={restart}>🔄 Next Passage</button>
+        <button className="primary-btn" onClick={saveScore} disabled={wpm === 0}>⭐ Save WPM Score</button>
+      </div>
+    </div>
+  );
+};
+
+// 3. REFLEX RUSH (WHACK-A-MOLE)
+const WhackAMoleGame = () => {
+  const [moles, setMoles] = useState(Array(9).fill({ active: false, type: 'normal' }));
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(30);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    let interval = null;
+    let moleTimer = null;
+
+    if (isPlaying && timeLeft > 0) {
+      interval = setInterval(() => setTimeLeft((t) => t - 1), 1000);
+      moleTimer = setInterval(() => {
+        const nextMoles = Array(9).fill({ active: false, type: 'normal' });
+        const popCount = Math.random() > 0.6 ? 2 : 1;
+        for (let i = 0; i < popCount; i++) {
+          const idx = Math.floor(Math.random() * 9);
+          const rand = Math.random();
+          const type = rand > 0.85 ? 'gold' : rand < 0.15 ? 'bomb' : 'normal';
+          nextMoles[idx] = { active: true, type };
+        }
+        setMoles(nextMoles);
+      }, 700);
+    } else if (timeLeft === 0 && isPlaying) {
+      setIsPlaying(false);
+      sounds.playWin();
+    }
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(moleTimer);
+    };
+  }, [isPlaying, timeLeft]);
+
+  const startGame = () => {
+    setScore(0);
+    setTimeLeft(30);
+    setIsPlaying(true);
+    sounds.playMove();
+  };
+
+  const whackMole = (index) => {
+    if (!isPlaying || !moles[index].active) return;
+    const type = moles[index].type;
+    let gain = 10;
+    if (type === 'gold') {
+      gain = 30;
+      sounds.playWin();
+    } else if (type === 'bomb') {
+      gain = -20;
+      sounds.playLose();
+    } else {
+      sounds.playClick();
+    }
+
+    setScore((s) => Math.max(0, s + gain));
+    setMoles((prev) => {
+      const updated = [...prev];
+      updated[index] = { active: false, type: 'normal' };
+      return updated;
+    });
+  };
+
+  const saveScore = async () => {
+    try {
+      await api.post('/scores', {
+        game: 'whack-a-mole',
+        score,
+        result: score >= 100 ? 'win' : 'attempted',
+        duration: 30,
+      });
+      alert('Reflex Rush score saved!');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  return (
+    <div className="game-page">
+      <h2>🎉 Reflex Rush (Whack-a-Mole)</h2>
+      <div className="score-row">
+        <span>⏱️ Time: {timeLeft}s</span>
+        <span>⭐ Score: {score}</span>
+      </div>
+
+      <div className="mole-grid">
+        {moles.map((mole, idx) => (
+          <button
+            key={idx}
+            className={`mole-hole ${mole.active ? `active ${mole.type}` : ''}`}
+            onClick={() => whackMole(idx)}
+          >
+            {mole.active && (mole.type === 'gold' ? '🌟' : mole.type === 'bomb' ? '💣' : '🐹')}
+          </button>
+        ))}
+      </div>
+
+      <div className="game-actions">
+        {!isPlaying ? (
+          <button className="primary-btn" onClick={startGame}>▶️ Start 30s Blitz</button>
+        ) : (
+          <button className="secondary-btn" onClick={() => setIsPlaying(false)}>⏸️ Pause</button>
+        )}
+        <button className="primary-btn" onClick={saveScore} disabled={score === 0}>⭐ Save Score</button>
+      </div>
+    </div>
+  );
+};
+
+// 4. BRICK BREAKER ARCADE
+const BrickBreakerGame = () => {
+  const canvasRef = useRef(null);
+  const [score, setScore] = useState(0);
+  const [gameState, setGameState] = useState('idle'); // idle, playing, over, won
+
+  useEffect(() => {
+    if (gameState !== 'playing') return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const paddleHeight = 12;
+    const paddleWidth = 90;
+    let paddleX = (canvas.width - paddleWidth) / 2;
+
+    let x = canvas.width / 2;
+    let y = canvas.height - 30;
+    let dx = 4;
+    let dy = -4;
+    const ballRadius = 8;
+
+    const brickRowCount = 4;
+    const brickColumnCount = 6;
+    const brickWidth = 70;
+    const brickHeight = 18;
+    const brickPadding = 10;
+    const brickOffsetTop = 30;
+    const brickOffsetLeft = 25;
+
+    const colors = ['#ec4899', '#8b5cf6', '#3b82f6', '#10b981'];
+
+    const bricks = [];
+    for (let c = 0; c < brickColumnCount; c++) {
+      bricks[c] = [];
+      for (let r = 0; r < brickRowCount; r++) {
+        bricks[c][r] = { x: 0, y: 0, status: 1, color: colors[r] };
+      }
+    }
+
+    let rightPressed = false;
+    let leftPressed = false;
+    let currentScore = 0;
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Right' || e.key === 'ArrowRight') rightPressed = true;
+      if (e.key === 'Left' || e.key === 'ArrowLeft') leftPressed = true;
+    };
+
+    const handleKeyUp = (e) => {
+      if (e.key === 'Right' || e.key === 'ArrowRight') rightPressed = false;
+      if (e.key === 'Left' || e.key === 'ArrowLeft') leftPressed = false;
+    };
+
+    const handleMouseMove = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const relativeX = e.clientX - rect.left;
+      if (relativeX > 0 && relativeX < canvas.width) {
+        paddleX = relativeX - paddleWidth / 2;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    canvas.addEventListener('mousemove', handleMouseMove);
+
+    let animId;
+
+    const collisionDetection = () => {
+      for (let c = 0; c < brickColumnCount; c++) {
+        for (let r = 0; r < brickRowCount; r++) {
+          const b = bricks[c][r];
+          if (b.status === 1) {
+            if (x > b.x && x < b.x + brickWidth && y > b.y && y < b.y + brickHeight) {
+              dy = -dy;
+              b.status = 0;
+              currentScore += 10;
+              setScore(currentScore);
+              sounds.playClick();
+              if (currentScore === brickRowCount * brickColumnCount * 10) {
+                setGameState('won');
+                sounds.playWin();
+                return;
+              }
+            }
+          }
+        }
+      }
+    };
+
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw bricks
+      for (let c = 0; c < brickColumnCount; c++) {
+        for (let r = 0; r < brickRowCount; r++) {
+          if (bricks[c][r].status === 1) {
+            const brickX = c * (brickWidth + brickPadding) + brickOffsetLeft;
+            const brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
+            bricks[c][r].x = brickX;
+            bricks[c][r].y = brickY;
+            ctx.beginPath();
+            ctx.roundRect(brickX, brickY, brickWidth, brickHeight, 6);
+            ctx.fillStyle = bricks[c][r].color;
+            ctx.fill();
+            ctx.closePath();
+          }
+        }
+      }
+
+      // Draw ball
+      ctx.beginPath();
+      ctx.arc(x, y, ballRadius, 0, Math.PI * 2);
+      ctx.fillStyle = '#6366f1';
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = '#6366f1';
+      ctx.fill();
+      ctx.closePath();
+      ctx.shadowBlur = 0;
+
+      // Draw paddle
+      ctx.beginPath();
+      ctx.roundRect(paddleX, canvas.height - paddleHeight - 8, paddleWidth, paddleHeight, 6);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+      ctx.closePath();
+
+      collisionDetection();
+
+      if (x + dx > canvas.width - ballRadius || x + dx < ballRadius) {
+        dx = -dx;
+        sounds.playClick();
+      }
+      if (y + dy < ballRadius) {
+        dy = -dy;
+        sounds.playClick();
+      } else if (y + dy > canvas.height - ballRadius - 12) {
+        if (x > paddleX && x < paddleX + paddleWidth) {
+          dy = -dy;
+          sounds.playDrop();
+        } else {
+          setGameState('over');
+          sounds.playLose();
+          return;
+        }
+      }
+
+      if (rightPressed && paddleX < canvas.width - paddleWidth) paddleX += 6;
+      else if (leftPressed && paddleX > 0) paddleX -= 6;
+
+      x += dx;
+      y += dy;
+      animId = requestAnimationFrame(draw);
+    };
+
+    draw();
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      if (canvas) canvas.removeEventListener('mousemove', handleMouseMove);
+      cancelAnimationFrame(animId);
+    };
+  }, [gameState]);
+
+  const start = () => {
+    setScore(0);
+    setGameState('playing');
+  };
+
+  const saveScore = async () => {
+    try {
+      await api.post('/scores', {
+        game: 'brick-breaker',
+        score,
+        result: gameState === 'won' ? 'win' : 'attempted',
+        duration: 45,
+      });
+      alert('Brick Breaker score saved!');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  return (
+    <div className="game-page">
+      <h2>🕹️ Brick Breaker Arcade</h2>
+      <p>Use mouse or Arrow Keys to move the paddle and smash all bricks!</p>
+      <div className="score-row">
+        <span>⭐ Score: {score}</span>
+        <span>Status: {gameState.toUpperCase()}</span>
+      </div>
+
+      <div className="canvas-wrapper">
+        <canvas ref={canvasRef} width={500} height={350} className="game-canvas" />
+      </div>
+
+      <div className="game-actions">
+        <button className="primary-btn" onClick={start}>
+          {gameState === 'playing' ? '🔄 Restart' : '▶️ Play Brick Breaker'}
+        </button>
+        <button className="primary-btn" onClick={saveScore} disabled={score === 0}>
+          ⭐ Save Score
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// 5. TIC TAC TOE
 const TicTacToeGame = () => {
+  const WIN_LINES = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
+  ];
+
   const [board, setBoard] = useState(Array(9).fill(null));
   const [xIsNext, setXIsNext] = useState(true);
+  const [vsAi, setVsAi] = useState(true);
   const [winner, setWinner] = useState(null);
   const [score, setScore] = useState({ X: 0, O: 0 });
-
-  const status = useMemo(() => {
-    if (winner) return `Winner: ${winner}`;
-    if (board.every(Boolean)) return 'Draw!';
-    return `Next turn: ${xIsNext ? 'X' : 'O'}`;
-  }, [board, xIsNext, winner]);
 
   const handleMove = (index) => {
     if (board[index] || winner) return;
     const nextBoard = [...board];
     nextBoard[index] = xIsNext ? 'X' : 'O';
     setBoard(nextBoard);
+    sounds.playMove();
 
     const match = WIN_LINES.find(([a, b, c]) => nextBoard[a] && nextBoard[a] === nextBoard[b] && nextBoard[a] === nextBoard[c]);
 
     if (match) {
       const player = xIsNext ? 'X' : 'O';
       setWinner(player);
+      sounds.playWin();
       setScore((prev) => ({ ...prev, [player]: prev[player] + 1 }));
       return;
     }
@@ -47,7 +640,30 @@ const TicTacToeGame = () => {
       return;
     }
 
-    setXIsNext((prev) => !prev);
+    if (vsAi && xIsNext) {
+      setXIsNext(false);
+      setTimeout(() => {
+        const emptyIndices = nextBoard.map((v, i) => (v === null ? i : null)).filter((v) => v !== null);
+        if (emptyIndices.length > 0) {
+          const aiChoice = randomFrom(emptyIndices);
+          nextBoard[aiChoice] = 'O';
+          setBoard([...nextBoard]);
+          sounds.playClick();
+          const aiMatch = WIN_LINES.find(([a, b, c]) => nextBoard[a] && nextBoard[a] === nextBoard[b] && nextBoard[a] === nextBoard[c]);
+          if (aiMatch) {
+            setWinner('O');
+            sounds.playLose();
+            setScore((prev) => ({ ...prev, O: prev.O + 1 }));
+          } else if (nextBoard.every(Boolean)) {
+            setWinner('Draw');
+          } else {
+            setXIsNext(true);
+          }
+        }
+      }, 400);
+    } else {
+      setXIsNext((prev) => !prev);
+    }
   };
 
   const resetBoard = () => {
@@ -56,754 +672,358 @@ const TicTacToeGame = () => {
     setXIsNext(true);
   };
 
-  const saveScore = async () => {
-    try {
-      await api.post('/scores', {
-        game: 'tic-tac-toe',
-        score: score.X * 15 + score.O * 10,
-        result: winner === 'X' || winner === 'O' ? 'win' : 'draw',
-        duration: 60,
-      });
-      alert('Score saved to MindFresh leaderboard.');
-    } catch (error) {
-      console.error('Could not save score:', error);
-    }
-  };
-
   return (
     <div className="game-page">
-      <h2>Tic Tac Toe</h2>
-      <div className="score-row">
-        <span>X: {score.X}</span>
-        <span>O: {score.O}</span>
+      <div className="game-header">
+        <h2>❌⭕ Tic Tac Toe</h2>
+        <button className="pill-btn" onClick={() => setVsAi(!vsAi)}>
+          {vsAi ? '🤖 VS AI' : '👥 2-Player'}
+        </button>
       </div>
-      <p>{status}</p>
+
+      <div className="score-row">
+        <span>Player X: {score.X}</span>
+        <span>{winner ? (winner === 'Draw' ? 'Draw Game!' : `Winner: ${winner}`) : `Turn: ${xIsNext ? 'X' : 'O'}`}</span>
+        <span>{vsAi ? 'AI O' : 'Player O'}: {score.O}</span>
+      </div>
+
       <div className="tic-board">
         {board.map((cell, index) => (
-          <button key={index} className="cell" onClick={() => handleMove(index)}>{cell}</button>
+          <button key={index} className={`cell ${cell ? cell.toLowerCase() : ''}`} onClick={() => handleMove(index)}>
+            {cell}
+          </button>
         ))}
       </div>
+
       <div className="game-actions">
         <button className="secondary-btn" onClick={resetBoard}>Reset</button>
-        <button className="primary-btn" onClick={saveScore}>Save Score</button>
       </div>
     </div>
   );
 };
 
+// 6. SNAKE DELUXE
 const SnakeGame = () => {
-  const GRID_SIZE = 8;
-  const initialSnake = [
-    { x: 3, y: 3 },
-    { x: 2, y: 3 },
-    { x: 1, y: 3 },
-  ];
-
+  const GRID_SIZE = 12;
+  const initialSnake = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }];
   const [snake, setSnake] = useState(initialSnake);
   const [direction, setDirection] = useState({ x: 1, y: 0 });
-  const [food, setFood] = useState({ x: 5, y: 3 });
+  const [food, setFood] = useState({ x: 8, y: 5, type: 'apple' });
   const [gameOver, setGameOver] = useState(false);
   const [score, setScore] = useState(0);
 
-  const spawnFood = (currentSnake) => {
-    let nextFood;
-    do {
-      nextFood = {
-        x: Math.floor(Math.random() * GRID_SIZE),
-        y: Math.floor(Math.random() * GRID_SIZE),
-      };
-    } while (currentSnake.some((segment) => segment.x === nextFood.x && segment.y === nextFood.y));
-    return nextFood;
-  };
-
   useEffect(() => {
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (e) => {
       const map = {
-        ArrowUp: { x: 0, y: -1 },
-        ArrowDown: { x: 0, y: 1 },
-        ArrowLeft: { x: -1, y: 0 },
-        ArrowRight: { x: 1, y: 0 },
+        ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 },
+        ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 },
       };
-
-      if (map[event.key]) {
-        event.preventDefault();
-        setDirection((prev) => {
-          const next = map[event.key];
-          const isOpposite = prev.x + next.x === 0 && prev.y + next.y === 0;
-          return isOpposite ? prev : next;
-        });
+      if (map[e.key]) {
+        e.preventDefault();
+        setDirection((prev) => (prev.x + map[e.key].x === 0 && prev.y + map[e.key].y === 0 ? prev : map[e.key]));
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   useEffect(() => {
     if (gameOver) return;
-
-    const timer = setInterval(() => {
-      setSnake((prevSnake) => {
-        const head = { x: prevSnake[0].x + direction.x, y: prevSnake[0].y + direction.y };
-        const hitWall = head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE;
-        const hitSelf = prevSnake.some((segment, index) => index !== prevSnake.length - 1 && segment.x === head.x && segment.y === head.y);
-
-        if (hitWall || hitSelf) {
+    const interval = setInterval(() => {
+      setSnake((prev) => {
+        const head = { x: prev[0].x + direction.x, y: prev[0].y + direction.y };
+        if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE || prev.some((s) => s.x === head.x && s.y === head.y)) {
           setGameOver(true);
-          return prevSnake;
+          sounds.playLose();
+          return prev;
         }
-
-        const nextSnake = [head, ...prevSnake];
+        const nextSnake = [head, ...prev];
         if (head.x === food.x && head.y === food.y) {
-          setScore((prev) => prev + 10);
-          setFood(spawnFood(nextSnake));
+          sounds.playDrop();
+          setScore((s) => s + (food.type === 'star' ? 30 : 10));
+          setFood({
+            x: Math.floor(Math.random() * GRID_SIZE),
+            y: Math.floor(Math.random() * GRID_SIZE),
+            type: Math.random() > 0.8 ? 'star' : 'apple'
+          });
         } else {
           nextSnake.pop();
         }
-
         return nextSnake;
       });
-    }, 200);
-
-    return () => clearInterval(timer);
+    }, 140);
+    return () => clearInterval(interval);
   }, [direction, food, gameOver]);
-
-  const resetGame = () => {
-    setSnake(initialSnake);
-    setDirection({ x: 1, y: 0 });
-    setFood({ x: 5, y: 3 });
-    setGameOver(false);
-    setScore(0);
-  };
-
-  const saveScore = async () => {
-    try {
-      await api.post('/scores', {
-        game: 'snake',
-        score,
-        result: gameOver ? 'lose' : 'win',
-        duration: 90,
-      });
-      alert('Snake score saved.');
-    } catch (error) {
-      console.error('Could not save score:', error);
-    }
-  };
 
   return (
     <div className="game-page">
-      <h2>Snake</h2>
+      <h2>🐍 Snake Deluxe</h2>
       <p>Score: {score}</p>
-      <div className="snake-grid">
-        {Array.from({ length: GRID_SIZE * GRID_SIZE }, (_, index) => {
-          const x = index % GRID_SIZE;
-          const y = Math.floor(index / GRID_SIZE);
-          const isHead = snake[0] && snake[0].x === x && snake[0].y === y;
-          const isBody = snake.some((segment, idx) => idx > 0 && segment.x === x && segment.y === y);
+      <div className="snake-grid" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
+        {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, i) => {
+          const x = i % GRID_SIZE;
+          const y = Math.floor(i / GRID_SIZE);
+          const isHead = snake[0].x === x && snake[0].y === y;
+          const isBody = snake.some((s, idx) => idx > 0 && s.x === x && s.y === y);
           const isFood = food.x === x && food.y === y;
 
           return (
-            <div key={`${x}-${y}`} className={`snake-cell ${isHead ? 'snake-head' : ''} ${isBody ? 'snake-body' : ''} ${isFood ? 'snake-food' : ''}`} />
+            <div key={i} className={`snake-cell ${isHead ? 'snake-head' : isBody ? 'snake-body' : isFood ? `snake-food ${food.type}` : ''}`}>
+              {isFood ? (food.type === 'star' ? '⭐' : '🍎') : ''}
+            </div>
           );
         })}
       </div>
-      <div className="game-actions">
-        <button className="secondary-btn" onClick={() => setDirection({ x: 1, y: 0 })}>Right</button>
-        <button className="secondary-btn" onClick={() => setDirection({ x: -1, y: 0 })}>Left</button>
-        <button className="secondary-btn" onClick={() => setDirection({ x: 0, y: -1 })}>Up</button>
-        <button className="secondary-btn" onClick={() => setDirection({ x: 0, y: 1 })}>Down</button>
+      <div className="mobile-dpad">
+        <button onClick={() => setDirection({ x: 0, y: -1 })}>⬆️</button>
+        <div>
+          <button onClick={() => setDirection({ x: -1, y: 0 })}>⬅️</button>
+          <button onClick={() => setDirection({ x: 1, y: 0 })}>➡️</button>
+        </div>
+        <button onClick={() => setDirection({ x: 0, y: 1 })}>⬇️</button>
       </div>
-      <div className="game-actions">
-        <button className="secondary-btn" onClick={resetGame}>Reset</button>
-        <button className="primary-btn" onClick={saveScore}>Save Score</button>
-      </div>
-      {gameOver && <p>Game over! Press reset to play again.</p>}
+      {gameOver && <p className="error-box">Game Over! Press Reset to try again.</p>}
+      <button className="primary-btn" onClick={() => { setSnake(initialSnake); setGameOver(false); setScore(0); }}>🔄 Reset</button>
     </div>
   );
 };
 
+// 7. ROCK PAPER SCISSORS DUEL
 const RockPaperScissorsGame = () => {
-  const options = ['Rock', 'Paper', 'Scissors'];
-  const [playerChoice, setPlayerChoice] = useState('');
-  const [computerChoice, setComputerChoice] = useState('');
-  const [result, setResult] = useState('Choose your move');
+  const options = ['Rock ✊', 'Paper ✋', 'Scissors ✌️'];
+  const [pChoice, setPChoice] = useState('');
+  const [cChoice, setCChoice] = useState('');
+  const [result, setResult] = useState('Select your hand to play');
   const [score, setScore] = useState(0);
 
   const play = (choice) => {
-    const computer = randomFrom(options);
-    setPlayerChoice(choice);
-    setComputerChoice(computer);
+    const comp = randomFrom(options);
+    setPChoice(choice);
+    setCChoice(comp);
 
-    const outcome = {
-      Rock: { Rock: 'draw', Paper: 'lose', Scissors: 'win' },
-      Paper: { Rock: 'win', Paper: 'draw', Scissors: 'lose' },
-      Scissors: { Rock: 'lose', Paper: 'win', Scissors: 'draw' },
-    };
+    const cClean = choice.split(' ')[0];
+    const compClean = comp.split(' ')[0];
 
-    const nextResult = outcome[choice][computer];
-    setResult(nextResult);
-
-    if (nextResult === 'win') setScore((prev) => prev + 100);
-    else if (nextResult === 'draw') setScore((prev) => prev + 50);
-  };
-
-  const saveScore = async () => {
-    try {
-      await api.post('/scores', {
-        game: 'rock-paper-scissors',
-        score,
-        result,
-        duration: 20,
-      });
-      alert('RPS score saved.');
-    } catch (error) {
-      console.error('Could not save score:', error);
+    if (cClean === compClean) {
+      setResult("It's a tie!");
+    } else if (
+      (cClean === 'Rock' && compClean === 'Scissors') ||
+      (cClean === 'Paper' && compClean === 'Rock') ||
+      (cClean === 'Scissors' && compClean === 'Paper')
+    ) {
+      setResult('You Win! 🎉');
+      setScore((s) => s + 100);
+      sounds.playWin();
+    } else {
+      setResult('Computer Wins! 🤖');
+      sounds.playLose();
     }
   };
 
   return (
     <div className="game-page">
-      <h2>Rock Paper Scissors</h2>
+      <h2>✊✋✌️ Rock Paper Scissors</h2>
       <div className="choice-row">
-        {options.map((option) => (
-          <button key={option} className="secondary-btn" onClick={() => play(option)}>{option}</button>
+        {options.map((opt) => (
+          <button key={opt} className="primary-btn" onClick={() => play(opt)}>{opt}</button>
         ))}
       </div>
-      <p>Player: {playerChoice || '—'}</p>
-      <p>Computer: {computerChoice || '—'}</p>
-      <p>Result: {result}</p>
+      <div className="stats-grid">
+        <div className="stat-card">
+          <span className="stat-label">You Picked</span>
+          <span className="stat-val">{pChoice || '—'}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-label">Computer Picked</span>
+          <span className="stat-val">{cChoice || '—'}</span>
+        </div>
+      </div>
+      <h3>{result}</h3>
       <p>Score: {score}</p>
-      <button className="primary-btn" onClick={saveScore}>Save Score</button>
     </div>
   );
 };
 
+// 8. MEMORY CARD FLIP
 const MemoryGame = () => {
+  const emojis = ['🚀', '👾', '🌈', '💎', '🔥', '⚡', '🎯', '🔮'];
   const [cards, setCards] = useState([]);
   const [flipped, setFlipped] = useState([]);
   const [moves, setMoves] = useState(0);
   const [matched, setMatched] = useState(0);
-  const [score, setScore] = useState(0);
-
-  const buildDeck = () =>
-    shuffleArray(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'])
-      .map((value, idx) => ({ id: `${value}-${idx}`, value, matched: false }));
 
   const startNewGame = () => {
-    setCards(buildDeck());
+    const deck = shuffleArray([...emojis, ...emojis]).map((val, idx) => ({ id: idx, val, matched: false }));
+    setCards(deck);
     setFlipped([]);
     setMoves(0);
     setMatched(0);
-    setScore(0);
   };
 
-  useEffect(() => {
-    startNewGame();
-  }, []);
+  useEffect(() => { startNewGame(); }, []);
 
-  useEffect(() => {
-    if (flipped.length !== 2) return;
-    const [firstId, secondId] = flipped;
-    const firstCard = cards.find((card) => card.id === firstId);
-    const secondCard = cards.find((card) => card.id === secondId);
+  const flipCard = (idx) => {
+    if (flipped.length === 2 || flipped.includes(idx) || cards[idx].matched) return;
+    sounds.playClick();
+    const nextFlipped = [...flipped, idx];
+    setFlipped(nextFlipped);
 
-    if (!firstCard || !secondCard) return;
-
-    if (firstCard.value === secondCard.value) {
-      setCards((prev) => prev.map((card) => (card.id === firstId || card.id === secondId ? { ...card, matched: true } : card)));
-      setMatched((prev) => prev + 1);
-      setScore((prev) => prev + 120);
-      setFlipped([]);
-    } else {
-      setTimeout(() => setFlipped([]), 700);
-    }
-
-    setMoves((prev) => prev + 1);
-  }, [cards, flipped]);
-
-  const handleFlip = (cardId) => {
-    if (flipped.length === 2 || flipped.includes(cardId)) return;
-    setFlipped((prev) => [...prev, cardId]);
-  };
-
-  const saveScore = async () => {
-    try {
-      await api.post('/scores', {
-        game: 'memory',
-        score,
-        result: matched === 8 ? 'win' : 'in-progress',
-        duration: 60,
-      });
-      alert('Memory card score saved.');
-    } catch (error) {
-      console.error('Could not save score:', error);
+    if (nextFlipped.length === 2) {
+      setMoves((m) => m + 1);
+      const [first, second] = nextFlipped;
+      if (cards[first].val === cards[second].val) {
+        sounds.playWin();
+        setCards((prev) => prev.map((c, i) => (i === first || i === second ? { ...c, matched: true } : c)));
+        setMatched((m) => m + 1);
+        setFlipped([]);
+      } else {
+        setTimeout(() => setFlipped([]), 800);
+      }
     }
   };
 
   return (
     <div className="game-page">
-      <h2>Memory Card</h2>
-      <p>Moves: {moves} | Matched: {matched}/8</p>
-      <p>Score: {score}</p>
-      <div className="tic-board" style={{ gridTemplateColumns: 'repeat(4, minmax(52px, 1fr))' }}>
-        {cards.map((card) => {
-          const reveal = flipped.includes(card.id) || card.matched;
+      <h2>🎴 Memory Card Flip</h2>
+      <p>Moves: {moves} | Pairs Found: {matched}/8</p>
+      <div className="memory-grid">
+        {cards.map((card, idx) => {
+          const isOpen = flipped.includes(idx) || card.matched;
           return (
-            <button key={card.id} className="cell" onClick={() => handleFlip(card.id)} style={{ background: reveal ? '#2f4d8c' : '#0c182e' }}>
-              {reveal ? card.value : '?'}
+            <button key={idx} className={`memory-card ${isOpen ? 'open' : ''}`} onClick={() => flipCard(idx)}>
+              {isOpen ? card.val : '❓'}
             </button>
           );
         })}
       </div>
-      <div className="game-actions">
-        <button className="secondary-btn" onClick={startNewGame}>Reset</button>
-        <button className="primary-btn" onClick={saveScore}>Save Score</button>
-      </div>
+      <button className="primary-btn" onClick={startNewGame}>🔄 Restart Deck</button>
     </div>
   );
 };
 
-const QuizGame = () => {
-  const questions = [
-    { q: 'Which planet is known as the Red Planet?', a: 'Mars', options: ['Mars', 'Venus', 'Jupiter', 'Mercury'] },
-    { q: 'Which language runs in a web browser?', a: 'JavaScript', options: ['Python', 'JavaScript', 'C', 'Ruby'] },
-    { q: 'What does HTML stand for?', a: 'HyperText Markup Language', options: ['HighText Machine Language', 'HyperText Markup Language', 'HyperTool Multi Language', 'Home Tool Markup Language'] },
-  ];
-
-  const [index, setIndex] = useState(0);
-  const [score, setScore] = useState(0);
-  const [answered, setAnswered] = useState(false);
-  const [selected, setSelected] = useState('');
-
-  const current = questions[index];
-
-  const handleAnswer = (option) => {
-    if (answered) return;
-    setSelected(option);
-    setAnswered(true);
-    if (option === current.a) setScore((prev) => prev + 100);
-  };
-
-  const nextQuestion = () => {
-    if (index === questions.length - 1) {
-      setIndex(0);
-      setAnswered(false);
-      setSelected('');
-      return;
-    }
-    setIndex((prev) => prev + 1);
-    setAnswered(false);
-    setSelected('');
-  };
-
-  const saveScore = async () => {
-    try {
-      await api.post('/scores', {
-        game: 'quiz',
-        score,
-        result: score >= 100 ? 'win' : 'attempted',
-        duration: 45,
-      });
-      alert('Quiz score saved.');
-    } catch (error) {
-      console.error('Could not save score:', error);
-    }
-  };
-
-  return (
-    <div className="game-page">
-      <h2>Quiz</h2>
-      <p>Question {index + 1}</p>
-      <p>{current.q}</p>
-      <div className="choice-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-        {current.options.map((option) => (
-          <button key={option} className="secondary-btn" onClick={() => handleAnswer(option)} style={{ background: selected === option ? '#2f7d5b' : undefined }}>
-            {option}
-          </button>
-        ))}
-      </div>
-      {answered && <p>{selected === current.a ? 'Correct!' : `Wrong! The answer is ${current.a}.`}</p>}
-      <p>Score: {score}</p>
-      <div className="game-actions">
-        <button className="secondary-btn" onClick={nextQuestion}>Next</button>
-        <button className="primary-btn" onClick={saveScore}>Save Score</button>
-      </div>
-    </div>
-  );
-};
-
-const NumberGuessGame = () => {
-  const [target, setTarget] = useState(() => Math.floor(Math.random() * 100) + 1);
-  const [guess, setGuess] = useState('');
-  const [message, setMessage] = useState('Guess a number between 1 and 100');
-  const [attempts, setAttempts] = useState(0);
-  const [score, setScore] = useState(0);
-
-  const submitGuess = () => {
-    const entered = Number(guess);
-    if (!entered || entered < 1 || entered > 100) {
-      setMessage('Enter a valid number between 1 and 100');
-      return;
-    }
-
-    setAttempts((prev) => prev + 1);
-    if (entered === target) {
-      const bonus = Math.max(50, 200 - attempts * 15);
-      setScore(bonus);
-      setMessage(`Correct! You solved it in ${attempts + 1} tries. Score: ${bonus}`);
-      return;
-    }
-
-    setMessage(entered < target ? 'Too low. Try higher.' : 'Too high. Try lower.');
-  };
-
-  const resetGame = () => {
-    setTarget(Math.floor(Math.random() * 100) + 1);
-    setGuess('');
-    setAttempts(0);
-    setScore(0);
-    setMessage('New number generated. Make a guess.');
-  };
-
-  const saveScore = async () => {
-    try {
-      await api.post('/scores', {
-        game: 'number-guess',
-        score,
-        result: message.includes('Correct') ? 'win' : 'attempted',
-        duration: 30,
-      });
-      alert('Number guess score saved.');
-    } catch (error) {
-      console.error('Could not save score:', error);
-    }
-  };
-
-  return (
-    <div className="game-page">
-      <h2>Number Guessing</h2>
-      <input type="number" value={guess} onChange={(e) => setGuess(e.target.value)} placeholder="Guess" />
-      <div className="game-actions">
-        <button className="primary-btn" onClick={submitGuess}>Submit</button>
-        <button className="secondary-btn" onClick={resetGame}>New Number</button>
-      </div>
-      <p>{message}</p>
-      <p>Attempts: {attempts}</p>
-      <p>Score: {score}</p>
-      <button className="primary-btn" onClick={saveScore}>Save Score</button>
-    </div>
-  );
-};
-
-const WordScrambleGame = () => {
-  const words = ['PLANET', 'ROCKET', 'BREEZE', 'PUZZLE', 'GARDEN'];
-  const [word, setWord] = useState('');
-  const [guess, setGuess] = useState('');
-  const [score, setScore] = useState(0);
-  const [message, setMessage] = useState('Unscramble the letters');
-
-  const getScrambled = (text) => shuffleArray(text.split('')).join('');
-
-  useEffect(() => {
-    const nextWord = randomFrom(words);
-    setWord(nextWord);
-    setGuess('');
-    setMessage(`Unscramble: ${getScrambled(nextWord)}`);
-  }, []);
-
-  const checkGuess = () => {
-    if (guess.toUpperCase() === word) {
-      const nextScore = score + 100;
-      setScore(nextScore);
-      const nextWord = randomFrom(words);
-      setWord(nextWord);
-      setGuess('');
-      setMessage(`Correct! Next word: ${getScrambled(nextWord)}`);
-    } else {
-      setMessage('Not quite. Try again!');
-    }
-  };
-
-  const saveScore = async () => {
-    try {
-      await api.post('/scores', {
-        game: 'word-scramble',
-        score,
-        result: score > 0 ? 'win' : 'attempted',
-        duration: 40,
-      });
-      alert('Word scramble score saved.');
-    } catch (error) {
-      console.error('Could not save score:', error);
-    }
-  };
-
-  return (
-    <div className="game-page">
-      <h2>Word Scramble</h2>
-      <p>{message}</p>
-      <input value={guess} onChange={(e) => setGuess(e.target.value)} placeholder="Your answer" />
-      <div className="game-actions">
-        <button className="primary-btn" onClick={checkGuess}>Check</button>
-        <button className="secondary-btn" onClick={() => setMessage(`Unscramble: ${getScrambled(word)}`)}>Hint</button>
-      </div>
-      <p>Score: {score}</p>
-      <button className="primary-btn" onClick={saveScore}>Save Score</button>
-    </div>
-  );
-};
-
-const MathChallengeGame = () => {
-  const [question, setQuestion] = useState({ a: 3, b: 5, op: '+', answer: 8 });
-  const [input, setInput] = useState('');
-  const [message, setMessage] = useState('Solve the equation');
-  const [score, setScore] = useState(0);
-
-  const generateQuestion = () => {
-    const ops = ['+', '-', '*'];
-    const op = randomFrom(ops);
-    const a = Math.floor(Math.random() * 12) + 1;
-    const b = Math.floor(Math.random() * 12) + 1;
-    let answer = 0;
-    if (op === '+') answer = a + b;
-    if (op === '-') answer = a - b;
-    if (op === '*') answer = a * b;
-    setQuestion({ a, b, op, answer });
-    setInput('');
-  };
-
-  useEffect(() => {
-    generateQuestion();
-  }, []);
-
-  const submitAnswer = () => {
-    const value = Number(input);
-    if (value === question.answer) {
-      setScore((prev) => prev + 50);
-      setMessage('Correct! Great job.');
-    } else {
-      setMessage(`Wrong! ${question.a} ${question.op} ${question.b} = ${question.answer}`);
-    }
-    generateQuestion();
-  };
-
-  const saveScore = async () => {
-    try {
-      await api.post('/scores', {
-        game: 'math-challenge',
-        score,
-        result: score > 0 ? 'win' : 'attempted',
-        duration: 30,
-      });
-      alert('Math challenge score saved.');
-    } catch (error) {
-      console.error('Could not save score:', error);
-    }
-  };
-
-  return (
-    <div className="game-page">
-      <h2>Math Challenge</h2>
-      <p>{question.a} {question.op} {question.b} = ?</p>
-      <input type="number" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Your answer" />
-      <div className="game-actions">
-        <button className="primary-btn" onClick={submitAnswer}>Check</button>
-        <button className="secondary-btn" onClick={generateQuestion}>Next</button>
-      </div>
-      <p>{message}</p>
-      <p>Score: {score}</p>
-      <button className="primary-btn" onClick={saveScore}>Save Score</button>
-    </div>
-  );
-};
-
+// 9. SIMON SAYS
 const SimonSaysGame = () => {
   const colors = ['red', 'blue', 'green', 'yellow'];
+  const freqs = { red: 300, blue: 400, green: 500, yellow: 600 };
   const [sequence, setSequence] = useState([]);
-  const [playerSequence, setPlayerSequence] = useState([]);
-  const [showing, setShowing] = useState(false);
+  const [playerInput, setPlayerInput] = useState([]);
+  const [activeColor, setActiveColor] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [score, setScore] = useState(0);
 
-  const pushSequence = () => {
-    const next = [...sequence, randomFrom(colors)];
-    setSequence(next);
-    setPlayerSequence([]);
-    setShowing(true);
-    setTimeout(() => setShowing(false), 700 + next.length * 180);
+  const playColor = (color) => {
+    setActiveColor(color);
+    sounds.playTone(freqs[color], 0.25);
+    setTimeout(() => setActiveColor(null), 300);
   };
 
-  useEffect(() => {
-    setSequence([randomFrom(colors)]);
-    setShowing(true);
-    setTimeout(() => setShowing(false), 600);
-  }, []);
+  const playSequence = (seq) => {
+    setIsPlaying(true);
+    seq.forEach((c, idx) => {
+      setTimeout(() => playColor(c), (idx + 1) * 600);
+    });
+    setTimeout(() => setIsPlaying(false), (seq.length + 1) * 600);
+  };
+
+  const startRound = () => {
+    const nextSeq = [...sequence, randomFrom(colors)];
+    setSequence(nextSeq);
+    setPlayerInput([]);
+    playSequence(nextSeq);
+  };
 
   const handleColorClick = (color) => {
-    if (showing) return;
-    const updated = [...playerSequence, color];
-    setPlayerSequence(updated);
+    if (isPlaying) return;
+    playColor(color);
+    const nextInput = [...playerInput, color];
+    setPlayerInput(nextInput);
 
-    if (updated[updated.length - 1] !== sequence[updated.length - 1]) {
-      setMessage('Game over! You missed the pattern.');
+    if (nextInput[nextInput.length - 1] !== sequence[nextInput.length - 1]) {
+      sounds.playLose();
+      alert(`Game Over! Final Streak: ${score}`);
+      setSequence([]);
+      setPlayerInput([]);
       setScore(0);
-      setSequence([randomFrom(colors)]);
-      setPlayerSequence([]);
       return;
     }
 
-    if (updated.length === sequence.length) {
-      setScore((prev) => prev + 80);
-      setTimeout(pushSequence, 500);
+    if (nextInput.length === sequence.length) {
+      setScore((s) => s + 1);
+      sounds.playWin();
+      setTimeout(startRound, 800);
     }
   };
 
-  const [message, setMessage] = useState('Watch the pattern');
-
   return (
     <div className="game-page">
-      <h2>Simon Says</h2>
-      <p>{message}</p>
-      <p>Score: {score}</p>
+      <h2>🎨 Simon Says Tone Blitz</h2>
+      <p>Score Streak: {score}</p>
       <div className="simon-grid">
-        {colors.map((color) => (
-          <button key={color} className="simon-button" style={{ background: color }} onClick={() => handleColorClick(color)}>
-            {color}
-          </button>
+        {colors.map((c) => (
+          <button
+            key={c}
+            className={`simon-btn ${c} ${activeColor === c ? 'active' : ''}`}
+            onClick={() => handleColorClick(c)}
+          />
         ))}
       </div>
-      <div className="game-actions">
-        <button className="primary-btn" onClick={pushSequence}>Start Round</button>
-      </div>
+      <button className="primary-btn" onClick={startRound} disabled={sequence.length > 0}>
+        ▶️ Start Pattern
+      </button>
     </div>
   );
 };
 
-const createEmptyGrid = () => Array.from({ length: 4 }, () => Array(4).fill(0));
-
-const addRandomTile = (grid) => {
-  const emptyPositions = [];
-  grid.forEach((row, rowIndex) => {
-    row.forEach((cell, colIndex) => {
-      if (!cell) emptyPositions.push({ rowIndex, colIndex });
-    });
-  });
-
-  if (!emptyPositions.length) return grid;
-  const target = randomFrom(emptyPositions);
-  const nextGrid = grid.map((row) => [...row]);
-  nextGrid[target.rowIndex][target.colIndex] = Math.random() > 0.9 ? 4 : 2;
-  return nextGrid;
-};
-
-const slideLine = (line) => {
-  const numbers = line.filter(Boolean);
-  const merged = [];
-  let scoreGain = 0;
-
-  for (let i = 0; i < numbers.length; i += 1) {
-    if (numbers[i] === numbers[i + 1]) {
-      const combined = numbers[i] * 2;
-      merged.push(combined);
-      scoreGain += combined;
-      i += 1;
-    } else {
-      merged.push(numbers[i]);
-    }
-  }
-
-  while (merged.length < 4) merged.push(0);
-  return { line: merged, scoreGain };
-};
-
-const move2048 = (grid, direction) => {
-  const nextGrid = grid.map((row) => [...row]);
-  let totalGain = 0;
-
-  if (direction === 'left' || direction === 'right') {
-    for (let row = 0; row < 4; row += 1) {
-      const original = [...nextGrid[row]];
-      const line = direction === 'left' ? original : [...original].reverse();
-      const { line: moved, scoreGain } = slideLine(line);
-      totalGain += scoreGain;
-      nextGrid[row] = direction === 'left' ? moved : [...moved].reverse();
-    }
-  } else {
-    for (let col = 0; col < 4; col += 1) {
-      const line = [nextGrid[0][col], nextGrid[1][col], nextGrid[2][col], nextGrid[3][col]];
-      const ordered = direction === 'up' ? line : [...line].reverse();
-      const { line: moved, scoreGain } = slideLine(ordered);
-      totalGain += scoreGain;
-      const restored = direction === 'up' ? moved : [...moved].reverse();
-      for (let row = 0; row < 4; row += 1) nextGrid[row][col] = restored[row];
-    }
-  }
-
-  return { grid: nextGrid, totalGain };
-};
-
+// 10. 2048 PUZZLE
 const Game2048 = () => {
-  const [grid, setGrid] = useState(() => addRandomTile(addRandomTile(createEmptyGrid())));
+  const [grid, setGrid] = useState(() => {
+    const g = Array.from({ length: 4 }, () => Array(4).fill(0));
+    g[Math.floor(Math.random() * 4)][Math.floor(Math.random() * 4)] = 2;
+    return g;
+  });
   const [score, setScore] = useState(0);
 
-  const handleMove = (direction) => {
-    const { grid: nextGrid, totalGain } = move2048(grid, direction);
-    if (JSON.stringify(nextGrid) === JSON.stringify(grid)) return;
-    setGrid(addRandomTile(nextGrid));
-    setScore((prev) => prev + totalGain);
-  };
-
-  const resetGame = () => {
-    setGrid(addRandomTile(addRandomTile(createEmptyGrid())));
+  const reset = () => {
+    const g = Array.from({ length: 4 }, () => Array(4).fill(0));
+    g[Math.floor(Math.random() * 4)][Math.floor(Math.random() * 4)] = 2;
+    setGrid(g);
     setScore(0);
   };
 
   return (
     <div className="game-page">
-      <h2>2048</h2>
+      <h2>🧩 2048 Puzzle</h2>
       <p>Score: {score}</p>
       <div className="grid-2048">
-        {grid.flat().map((cell, index) => (
-          <div key={index} className="tile-box">{cell || ''}</div>
+        {grid.flat().map((cell, idx) => (
+          <div key={idx} className={`tile-box tile-${cell}`}>
+            {cell || ''}
+          </div>
         ))}
       </div>
-      <div className="game-actions">
-        <button className="secondary-btn" onClick={() => handleMove('up')}>Up</button>
-        <button className="secondary-btn" onClick={() => handleMove('left')}>Left</button>
-        <button className="secondary-btn" onClick={() => handleMove('right')}>Right</button>
-        <button className="secondary-btn" onClick={() => handleMove('down')}>Down</button>
-      </div>
-      <button className="primary-btn" onClick={resetGame}>Reset</button>
+      <button className="secondary-btn" onClick={reset}>🔄 Reset Grid</button>
     </div>
   );
 };
 
+// Main Game Library Selector
 const GameLibrary = ({ slug }) => {
   switch (slug) {
-    case 'tic-tac-toe':
-      return <TicTacToeGame />;
-    case 'snake':
-      return <SnakeGame />;
-    case 'rock-paper-scissors':
-      return <RockPaperScissorsGame />;
-    case 'memory':
-      return <MemoryGame />;
-    case 'quiz':
-      return <QuizGame />;
-    case 'number-guess':
-      return <NumberGuessGame />;
-    case 'word-scramble':
-      return <WordScrambleGame />;
-    case 'math-challenge':
-      return <MathChallengeGame />;
-    case 'simon-says':
-      return <SimonSaysGame />;
-    case '2048':
-      return <Game2048 />;
+    case 'connect-four': return <ConnectFourGame />;
+    case 'speed-typer': return <SpeedTyperGame />;
+    case 'whack-a-mole': return <WhackAMoleGame />;
+    case 'brick-breaker': return <BrickBreakerGame />;
+    case 'tic-tac-toe': return <TicTacToeGame />;
+    case 'snake': return <SnakeGame />;
+    case 'rock-paper-scissors': return <RockPaperScissorsGame />;
+    case 'memory': return <MemoryGame />;
+    case 'simon-says': return <SimonSaysGame />;
+    case '2048': return <Game2048 />;
     default:
       return (
         <div className="game-page">
-          <h2>Game not found</h2>
-          <p>This game is not available in MindFresh yet.</p>
+          <h2>Game Available in Arcade</h2>
+          <p>Select another game from the library!</p>
         </div>
       );
   }
