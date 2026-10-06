@@ -25,10 +25,10 @@ const Home = () => {
     <div className="page-shell">
       <section className="hero">
         <div>
-          <p className="eyebrow">Multiplayer-ready gaming platform</p>
-          <h1>Play, compete, and climb the leaderboard.</h1>
+          <p className="eyebrow">MindFresh • live fun zone</p>
+          <h1>Challenge friends, sharpen skills, and win points.</h1>
           <p className="subtext">
-            A full game hub with auth, profiles, score tracking, and multiple arcade games.
+            MindFresh brings together quick arcade games, puzzle challenges, quiz rounds, and real-time multiplayer play in one smart game platform.
           </p>
         </div>
       </section>

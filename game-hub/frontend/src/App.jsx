@@ -5,6 +5,7 @@ import Admin from './pages/Admin';
 import GamePage from './pages/GamePage';
 import Home from './pages/Home';
 import Leaderboard from './pages/Leaderboard';
+import LiveArena from './pages/LiveArena';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import Register from './pages/Register';
@@ -17,6 +18,7 @@ const App = () => (
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/leaderboard" element={<Leaderboard />} />
+      <Route path="/live" element={<LiveArena />} />
       <Route path="/games/:slug" element={<GamePage />} />
       <Route
         path="/profile"

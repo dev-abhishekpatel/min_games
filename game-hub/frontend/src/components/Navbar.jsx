@@ -7,10 +7,11 @@ const Navbar = () => {
   return (
     <nav className="navbar">
       <div className="container nav-inner">
-        <Link to="/" className="brand">GameHub</Link>
+        <Link to="/" className="brand">MindFresh</Link>
 
         <div className="nav-links">
           <NavLink to="/">Home</NavLink>
+          <NavLink to="/live">Live Arena</NavLink>
           <NavLink to="/leaderboard">Leaderboard</NavLink>
           {user && <NavLink to="/profile">Profile</NavLink>}
           {user?.role === 'admin' && <NavLink to="/admin">Admin</NavLink>}

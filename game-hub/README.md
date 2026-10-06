@@ -1,28 +1,33 @@
-# GameHub
+# MindFresh
 
-A complete React + Express + MongoDB-ready multi-game platform inspired by the PDF project plan.
+MindFresh is a modern multi-game platform with arcade, puzzle, educational, and real-time live arena gameplay.
 
 ## Features
 
-- Home page with multiple game cards
-- Auth: register/login/logout
-- Profile and game history
-- Leaderboard and points tracking
+- Home dashboard with 10 game cards
+- Login, register, and profile tracking
+- Leaderboard and score history
 - Admin dashboard for adding games
-- Playable games: Tic-Tac-Toe, Rock Paper Scissors, Number Guess
+- Real-time multiplayer arena based on Socket.IO
+- Playable games:
+  - Tic Tac Toe
+  - Snake
+  - Rock Paper Scissors
+  - Memory Card
+  - Quiz
+  - Number Guessing
+  - Word Scramble
+  - Math Challenge
+  - Simon Says
+  - 2048
 - Demo mode works without MongoDB by using in-memory data storage
 
 ## Tech Stack
 
 - Frontend: React + Vite + React Router
-- Backend: Node.js + Express
+- Backend: Node.js + Express + Socket.IO
 - Database: MongoDB-ready with Mongoose, fallback local memory store for demo
 - Auth: JWT + bcrypt
-
-## Project structure
-
-- `backend/` – API server, auth, routes, score logic
-- `frontend/` – React application with game pages and layouts
 
 ## Quick start
 
@@ -31,9 +36,8 @@ A complete React + Express + MongoDB-ready multi-game platform inspired by the P
    - `npm install`
    - `npm install --prefix backend`
    - `npm install --prefix frontend`
-3. Start both apps together:
-   - `npm run dev`
-4. Frontend runs at `http://localhost:5173`
+3. Start backend and frontend with the correct absolute project paths if needed.
+4. Frontend runs at `http://localhost:5174` in the current local setup.
 5. Backend runs at `http://localhost:5000`
 
 ## Demo login
@@ -41,7 +45,6 @@ A complete React + Express + MongoDB-ready multi-game platform inspired by the P
 - Email: `admin@example.com`
 - Password: `admin123`
 
-## Notes
+## Real-time play
 
-- The backend falls back to in-memory storage when no `MONGO_URI` is provided.
-- For MongoDB, set `MONGO_URI` in `backend/.env`.
+Use the Live Arena page to create a room and join another player in a shared Tic-Tac-Toe match.
