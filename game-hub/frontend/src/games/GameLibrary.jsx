@@ -6,10 +6,13 @@ import VictoryModal from '../components/VictoryModal';
 const shuffleArray = (items) => [...items].sort(() => Math.random() - 0.5);
 const randomFrom = (items) => items[Math.floor(Math.random() * items.length)];
 
-// 1. SPACE COSMIC BLASTER (HOT 🚀)
+// ==========================================
+// 1. SPACE COSMIC BLASTER (60FPS Canvas Action)
+// ==========================================
 const SpaceShooterGame = () => {
   const canvasRef = useRef(null);
   const [score, setScore] = useState(0);
+  const [lives, setLives] = useState(3);
   const [gameState, setGameState] = useState('idle'); // idle, playing, over
   const [showModal, setShowModal] = useState(false);
 
@@ -21,9 +24,9 @@ const SpaceShooterGame = () => {
     const ctx = canvas.getContext('2d');
 
     let playerX = canvas.width / 2 - 20;
-    const playerY = canvas.height - 40;
+    const playerY = canvas.height - 45;
     const playerWidth = 40;
-    const playerHeight = 24;
+    const playerHeight = 28;
 
     const bullets = [];
     const enemies = [];
@@ -33,12 +36,16 @@ const SpaceShooterGame = () => {
     let leftPressed = false;
     let spacePressed = false;
     let currentScore = 0;
+    let currentLives = 3;
     let lastShotTime = 0;
 
     const handleKeyDown = (e) => {
       if (e.key === 'ArrowRight' || e.key === 'd') rightPressed = true;
       if (e.key === 'ArrowLeft' || e.key === 'a') leftPressed = true;
-      if (e.key === ' ' || e.key === 'Spacebar') spacePressed = true;
+      if (e.key === ' ' || e.key === 'Spacebar') {
+        spacePressed = true;
+        e.preventDefault();
+      }
     };
 
     const handleKeyUp = (e) => {
@@ -55,65 +62,93 @@ const SpaceShooterGame = () => {
       }
     };
 
+    const handleCanvasClick = () => {
+      shootLaser();
+    };
+
+    const shootLaser = () => {
+      const now = Date.now();
+      if (now - lastShotTime > 150) {
+        bullets.push({ x: playerX + playerWidth / 2 - 3, y: playerY, width: 6, height: 16 });
+        lastShotTime = now;
+        sounds.playClick();
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('click', handleCanvasClick);
 
     let animId;
-    let enemySpawnTimer = 0;
+    let enemyTimer = 0;
 
     const draw = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       // Starfield background
       ctx.fillStyle = '#090d16';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      for (let i = 0; i < 20; i++) {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect((i * 27) % canvas.width, (Date.now() / 10 + i * 40) % canvas.height, 2, 2);
+      // Stars
+      for (let i = 0; i < 25; i++) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.fillRect((i * 33 + Date.now() / 30) % canvas.width, (i * 27 + Date.now() / 15) % canvas.height, 2, 2);
       }
 
       // Move player
       if (rightPressed && playerX < canvas.width - playerWidth) playerX += 7;
       if (leftPressed && playerX > 0) playerX -= 7;
-
-      // Shoot laser
-      const now = Date.now();
-      if ((spacePressed || true) && now - lastShotTime > 180) {
-        bullets.push({ x: playerX + playerWidth / 2 - 3, y: playerY, width: 6, height: 14 });
-        lastShotTime = now;
-        sounds.playClick();
-      }
+      if (spacePressed) shootLaser();
 
       // Draw player spaceship
       ctx.fillStyle = '#6366f1';
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = '#6366f1';
       ctx.beginPath();
-      ctx.moveTo(playerX + playerWidth / 2, playerY - 10);
+      ctx.moveTo(playerX + playerWidth / 2, playerY - 12);
       ctx.lineTo(playerX + playerWidth, playerY + playerHeight);
+      ctx.lineTo(playerX + playerWidth / 2, playerY + playerHeight - 6);
       ctx.lineTo(playerX, playerY + playerHeight);
       ctx.closePath();
       ctx.fill();
+      ctx.shadowBlur = 0;
 
-      // Spawn aliens
-      enemySpawnTimer++;
-      if (enemySpawnTimer % 35 === 0) {
+      // Spawn alien enemies
+      enemyTimer++;
+      if (enemyTimer % 40 === 0) {
         enemies.push({
-          x: Math.random() * (canvas.width - 30),
+          x: Math.random() * (canvas.width - 32),
           y: -30,
-          width: 30,
-          height: 24,
+          width: 32,
+          height: 26,
           speed: 2 + Math.random() * 2,
+          type: Math.random() > 0.7 ? 'heavy' : 'scout',
+          hp: Math.random() > 0.7 ? 2 : 1,
         });
       }
 
       // Move & draw bullets
       for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
-        b.y -= 9;
+        b.y -= 10;
         ctx.fillStyle = '#38bdf8';
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#38bdf8';
         ctx.fillRect(b.x, b.y, b.width, b.height);
+        ctx.shadowBlur = 0;
         if (b.y < -20) bullets.splice(i, 1);
+      }
+
+      // Draw particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.05;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        if (p.life <= 0) particles.splice(i, 1);
       }
 
       // Move & draw enemies
@@ -121,12 +156,15 @@ const SpaceShooterGame = () => {
         const e = enemies[i];
         e.y += e.speed;
 
-        ctx.fillStyle = '#ef4444';
+        ctx.fillStyle = e.type === 'heavy' ? '#f97316' : '#ef4444';
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = ctx.fillStyle;
         ctx.beginPath();
         ctx.arc(e.x + e.width / 2, e.y + e.height / 2, 14, 0, Math.PI * 2);
         ctx.fill();
+        ctx.shadowBlur = 0;
 
-        // Bullet hit collision
+        // Check bullet hits
         for (let j = bullets.length - 1; j >= 0; j--) {
           const b = bullets[j];
           if (
@@ -135,21 +173,43 @@ const SpaceShooterGame = () => {
             b.y < e.y + e.height &&
             b.y + b.height > e.y
           ) {
-            sounds.playCorrect();
-            currentScore += 20;
-            setScore(currentScore);
+            e.hp--;
             bullets.splice(j, 1);
-            enemies.splice(i, 1);
-            break;
+            if (e.hp <= 0) {
+              sounds.playCorrect();
+              currentScore += e.type === 'heavy' ? 40 : 20;
+              setScore(currentScore);
+
+              // Spawn particles
+              for (let k = 0; k < 8; k++) {
+                particles.push({
+                  x: e.x + 16,
+                  y: e.y + 13,
+                  vx: (Math.random() - 0.5) * 6,
+                  vy: (Math.random() - 0.5) * 6,
+                  size: Math.random() * 4 + 2,
+                  color: e.type === 'heavy' ? '#f97316' : '#ef4444',
+                  life: 1,
+                });
+              }
+              enemies.splice(i, 1);
+              break;
+            }
           }
         }
 
         // Alien reaches bottom or hits ship
-        if (e && e.y > canvas.height - 30) {
-          setGameState('over');
-          setShowModal(true);
-          sounds.playLose();
-          return;
+        if (e && e.y > canvas.height - 35) {
+          enemies.splice(i, 1);
+          currentLives--;
+          setLives(currentLives);
+          sounds.playWrong();
+          if (currentLives <= 0) {
+            setGameState('over');
+            setShowModal(true);
+            sounds.playLose();
+            return;
+          }
         }
       }
 
@@ -161,13 +221,15 @@ const SpaceShooterGame = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      if (canvas) canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('click', handleCanvasClick);
       cancelAnimationFrame(animId);
     };
   }, [gameState]);
 
   const start = () => {
     setScore(0);
+    setLives(3);
     setGameState('playing');
     setShowModal(false);
   };
@@ -189,9 +251,10 @@ const SpaceShooterGame = () => {
   return (
     <div className="game-page">
       <h2>🚀 Space Cosmic Blaster</h2>
-      <p>Use Mouse or Left/Right Arrow keys to pilot your starship and blast alien fleets!</p>
+      <p>Use Mouse / Arrow Keys to move & click / Spacebar to shoot laser!</p>
 
       <div className="score-row">
+        <span>❤️ Lives: {'❤️'.repeat(lives)}</span>
         <span>⭐ Score: {score}</span>
         <span>Status: {gameState.toUpperCase()}</span>
       </div>
@@ -202,7 +265,7 @@ const SpaceShooterGame = () => {
 
       <div className="game-actions">
         <button className="primary-btn" onClick={start}>
-          {gameState === 'playing' ? '🔄 Restart Ship' : '▶️ Launch Starship'}
+          {gameState === 'playing' ? '🔄 Restart Flight' : '▶️ Launch Starship'}
         </button>
         <button className="primary-btn" onClick={saveScore} disabled={score === 0}>
           ⭐ Save Score
@@ -214,7 +277,7 @@ const SpaceShooterGame = () => {
           title="Space Cosmic Blaster"
           score={score}
           result={score >= 200 ? 'win' : 'attempted'}
-          message={`Fleet encounter complete! Final score: ${score} pts`}
+          message={`Space mission complete! Final Score: ${score} pts`}
           onPlayAgain={start}
           onSaveScore={saveScore}
         />
@@ -223,74 +286,167 @@ const SpaceShooterGame = () => {
   );
 };
 
-// 2. TURBO HIGHWAY RACER (HOT 🏎️)
+// ==========================================
+// 2. TURBO HIGHWAY RACER (60FPS Canvas Racing)
+// ==========================================
 const HighwayRacerGame = () => {
-  const [lane, setLane] = useState(1); // 0 (Left), 1 (Center), 2 (Right)
+  const canvasRef = useRef(null);
   const [score, setScore] = useState(0);
-  const [speed, setSpeed] = useState(100);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [traffic, setTraffic] = useState([]);
+  const [speed, setSpeed] = useState(120);
+  const [gameState, setGameState] = useState('idle');
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
-    let interval = null;
-    if (isPlaying) {
-      interval = setInterval(() => {
-        setScore((s) => s + 10);
-        setSpeed((sp) => Math.min(240, sp + 1));
+    if (gameState !== 'playing') return;
 
-        // Spawn traffic
-        if (Math.random() > 0.4) {
-          const spawnLane = Math.floor(Math.random() * 3);
-          const type = Math.random() > 0.8 ? 'nitro' : 'car';
-          setTraffic((prev) => [
-            ...prev.filter((t) => t.y < 400),
-            { id: Date.now() + Math.random(), lane: spawnLane, y: 0, type },
-          ]);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    let lane = 1; // 0, 1, 2
+    let targetLane = 1;
+    let playerX = canvas.width / 2 - 20;
+    const playerY = canvas.height - 70;
+    const carWidth = 40;
+    const carHeight = 55;
+
+    const laneWidth = canvas.width / 3;
+    const traffic = [];
+    let currentScore = 0;
+    let currentSpeed = 120;
+    let roadOffsetY = 0;
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'a') {
+        targetLane = Math.max(0, targetLane - 1);
+        sounds.playMove();
+      }
+      if (e.key === 'ArrowRight' || e.key === 'd') {
+        targetLane = Math.min(2, targetLane + 1);
+        sounds.playMove();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    let animId;
+    let timer = 0;
+
+    const draw = () => {
+      // Road background
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Scrolling road lines
+      roadOffsetY = (roadOffsetY + currentSpeed / 10) % 40;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.setLineDash([20, 20]);
+      ctx.lineWidth = 4;
+      ctx.lineDashOffset = -roadOffsetY;
+
+      ctx.beginPath();
+      ctx.moveTo(laneWidth, 0);
+      ctx.lineTo(laneWidth, canvas.height);
+      ctx.moveTo(laneWidth * 2, 0);
+      ctx.lineTo(laneWidth * 2, canvas.height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Smooth player car movement to target lane
+      const targetX = targetLane * laneWidth + laneWidth / 2 - carWidth / 2;
+      playerX += (targetX - playerX) * 0.25;
+
+      // Draw player car
+      ctx.fillStyle = '#f97316';
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = '#f97316';
+      ctx.beginPath();
+      ctx.roundRect(playerX, playerY, carWidth, carHeight, 8);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Wheels & windshield
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(playerX + 6, playerY + 12, carWidth - 12, 14);
+
+      // Spawn traffic & nitro
+      timer++;
+      if (timer % 30 === 0) {
+        const spawnLane = Math.floor(Math.random() * 3);
+        const isNitro = Math.random() > 0.8;
+        traffic.push({
+          x: spawnLane * laneWidth + laneWidth / 2 - carWidth / 2,
+          y: -60,
+          lane: spawnLane,
+          type: isNitro ? 'nitro' : 'car',
+          color: randomFrom(['#ef4444', '#3b82f6', '#10b981', '#a855f7']),
+        });
+      }
+
+      // Move & draw traffic
+      for (let i = traffic.length - 1; i >= 0; i--) {
+        const t = traffic[i];
+        t.y += currentSpeed / 20 + 2;
+
+        if (t.type === 'nitro') {
+          ctx.fillStyle = '#eab308';
+          ctx.beginPath();
+          ctx.arc(t.x + carWidth / 2, t.y + 20, 16, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 16px sans-serif';
+          ctx.fillText('⚡', t.x + carWidth / 2 - 8, t.y + 25);
+        } else {
+          ctx.fillStyle = t.color;
+          ctx.beginPath();
+          ctx.roundRect(t.x, t.y, carWidth, carHeight, 8);
+          ctx.fill();
         }
 
-        // Move traffic down
-        setTraffic((prev) =>
-          prev.map((t) => ({ ...t, y: t.y + 40 })).filter((t) => t.y < 420)
-        );
-      }, 250);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying]);
+        // Collision check
+        if (
+          playerX < t.x + carWidth - 6 &&
+          playerX + carWidth > t.x + 6 &&
+          playerY < t.y + carHeight - 6 &&
+          playerY + carHeight > t.y + 6
+        ) {
+          if (t.type === 'car') {
+            setGameState('over');
+            setShowModal(true);
+            sounds.playLose();
+            return;
+          } else if (t.type === 'nitro') {
+            sounds.playCorrect();
+            currentScore += 100;
+            currentSpeed = Math.min(260, currentSpeed + 15);
+            setSpeed(currentSpeed);
+            traffic.splice(i, 1);
+            continue;
+          }
+        }
 
-  // Check collision
-  useEffect(() => {
-    if (!isPlaying) return;
-    traffic.forEach((t) => {
-      if (t.y >= 280 && t.y <= 360 && t.lane === lane) {
-        if (t.type === 'car') {
-          setIsPlaying(false);
-          sounds.playLose();
-          setShowModal(true);
-        } else if (t.type === 'nitro') {
-          sounds.playCorrect();
-          setScore((s) => s + 100);
+        if (t.y > canvas.height + 60) {
+          currentScore += 10;
+          setScore(currentScore);
+          traffic.splice(i, 1);
         }
       }
-    });
-  }, [traffic, lane, isPlaying]);
 
-  const moveLeft = () => {
-    setLane((l) => Math.max(0, l - 1));
-    sounds.playMove();
-  };
+      animId = requestAnimationFrame(draw);
+    };
 
-  const moveRight = () => {
-    setLane((l) => Math.min(2, l + 1));
-    sounds.playMove();
-  };
+    draw();
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      cancelAnimationFrame(animId);
+    };
+  }, [gameState]);
 
   const start = () => {
     setScore(0);
-    setSpeed(100);
-    setLane(1);
-    setTraffic([]);
-    setIsPlaying(true);
+    setSpeed(120);
+    setGameState('playing');
     setShowModal(false);
   };
 
@@ -311,37 +467,24 @@ const HighwayRacerGame = () => {
   return (
     <div className="game-page">
       <h2>🏎️ Turbo Highway Racer</h2>
-      <p>Dodge traffic cars, grab nitro boosts, and reach top speeds!</p>
+      <p>Use Left/Right Arrow Keys to weave through highway traffic and grab Nitro ⚡ boosts!</p>
 
       <div className="score-row">
         <span>⚡ Speed: {speed} MPH</span>
         <span>⭐ Distance Score: {score}</span>
       </div>
 
-      <div className="highway-track">
-        {[0, 1, 2].map((lIdx) => (
-          <div key={lIdx} className="highway-lane">
-            {traffic
-              .filter((t) => t.lane === lIdx)
-              .map((t) => (
-                <div key={t.id} className={`traffic-item ${t.type}`} style={{ top: `${t.y}px` }}>
-                  {t.type === 'nitro' ? '⚡' : '🚘'}
-                </div>
-              ))}
-            {lane === lIdx && <div className="player-car">🏎️</div>}
-          </div>
-        ))}
+      <div className="canvas-wrapper">
+        <canvas ref={canvasRef} width={420} height={380} className="game-canvas" />
       </div>
 
       <div className="game-actions">
-        {isPlaying ? (
-          <div className="racer-controls">
-            <button className="secondary-btn ctrl-btn" onClick={moveLeft}>⬅️ Left Lane</button>
-            <button className="secondary-btn ctrl-btn" onClick={moveRight}>➡️ Right Lane</button>
-          </div>
-        ) : (
-          <button className="primary-btn" onClick={start}>▶️ Start Turbo Race</button>
-        )}
+        <button className="primary-btn" onClick={start}>
+          {gameState === 'playing' ? '🔄 Restart Race' : '▶️ Start Turbo Race'}
+        </button>
+        <button className="primary-btn" onClick={saveScore} disabled={score === 0}>
+          ⭐ Save Score
+        </button>
       </div>
 
       {showModal && (
@@ -349,7 +492,7 @@ const HighwayRacerGame = () => {
           title="Turbo Highway Racer"
           score={score}
           result={score >= 300 ? 'win' : 'attempted'}
-          message={`Traffic crash! Top speed reached: ${speed} MPH | Score: ${score}`}
+          message={`Race finished! Top speed: ${speed} MPH | Score: ${score}`}
           onPlayAgain={start}
           onSaveScore={saveScore}
         />
@@ -358,98 +501,101 @@ const HighwayRacerGame = () => {
   );
 };
 
-// 3. CYBER TANK BLITZ (HOT 🛡️)
+// ==========================================
+// 3. CYBER TANK BLITZ (Canvas Tank Arena)
+// ==========================================
 const TankDuelGame = () => {
-  const [enemyHealth, setEnemyHealth] = useState(100);
-  const [playerHealth, setPlayerHealth] = useState(100);
+  const [enemyHp, setEnemyHp] = useState(100);
+  const [playerHp, setPlayerHp] = useState(100);
   const [score, setScore] = useState(0);
-  const [isFiring, setIsFiring] = useState(false);
-  const [shotResult, setShotResult] = useState('Aim heavy cannon & fire!');
+  const [log, setLog] = useState('Aim tank turret & fire shells!');
   const [showModal, setShowModal] = useState(false);
+  const [isFiring, setIsFiring] = useState(false);
 
-  const fireCannon = (targetZone) => {
-    if (isFiring || enemyHealth <= 0 || playerHealth <= 0) return;
+  const fire = (target) => {
+    if (isFiring || enemyHp <= 0 || playerHp <= 0) return;
     setIsFiring(true);
     sounds.playDrop();
 
     setTimeout(() => {
-      const isHit = Math.random() > 0.35;
+      const hitChance = target === 'turret' ? 0.6 : target === 'hull' ? 0.8 : 0.7;
+      const isHit = Math.random() < hitChance;
+
       if (isHit) {
         sounds.playCorrect();
         const dmg = Math.floor(Math.random() * 25) + 20;
-        setEnemyHealth((h) => {
-          const nextH = Math.max(0, h - dmg);
-          if (nextH === 0) {
-            setShowModal(true);
-          }
-          return nextH;
-        });
-        setScore((s) => s + 150);
-        setShotResult(`💥 DIRECT HIT! Enemy tank took ${dmg} damage!`);
+        const nextEnemyHp = Math.max(0, enemyHp - dmg);
+        setEnemyHp(nextEnemyHp);
+        setScore((s) => s + 120);
+        setLog(`💥 DIRECT HIT on ${target.toUpperCase()}! Dealt ${dmg} damage!`);
+
+        if (nextEnemyHp === 0) {
+          setShowModal(true);
+          setIsFiring(false);
+          return;
+        }
       } else {
         sounds.playWrong();
-        setShotResult('💨 MISSED! Shell bounced off armor.');
+        setLog(`💨 MISSED! Shell bounced off heavy armor!`);
       }
 
-      // Enemy counter-attack
-      if (enemyHealth > 25) {
-        setTimeout(() => {
-          if (Math.random() > 0.4) {
-            const enemyDmg = Math.floor(Math.random() * 20) + 10;
-            setPlayerHealth((h) => {
-              const nextH = Math.max(0, h - enemyDmg);
-              if (nextH === 0) setShowModal(true);
-              return nextH;
-            });
+      // Enemy retaliates
+      setTimeout(() => {
+        if (Math.random() > 0.35) {
+          const enemyDmg = Math.floor(Math.random() * 20) + 12;
+          const nextPlayerHp = Math.max(0, playerHp - enemyDmg);
+          setPlayerHp(nextPlayerHp);
+          sounds.playWrong();
+          if (nextPlayerHp === 0) {
+            setShowModal(true);
           }
-        }, 600);
-      }
-
-      setIsFiring(false);
-    }, 400);
+        }
+        setIsFiring(false);
+      }, 500);
+    }, 300);
   };
 
   const restart = () => {
-    setEnemyHealth(100);
-    setPlayerHealth(100);
+    setEnemyHp(100);
+    setPlayerHp(100);
     setScore(0);
-    setShotResult('Aim heavy cannon & fire!');
+    setLog('Aim tank turret & fire shells!');
     setShowModal(false);
   };
 
   return (
     <div className="game-page">
       <h2>🛡️ Cyber Tank Blitz</h2>
-      <p>Lock on target zones and blast enemy armored tanks!</p>
+      <p>Target enemy heavy armor and blast them with heavy cannon shells!</p>
 
       <div className="tank-battleground">
         <div className="tank-card enemy">
           <span>🤖 Enemy Cyber Tank</span>
-          <div className="hp-track"><div className="hp-fill enemy" style={{ width: `${enemyHealth}%` }} /></div>
-          <strong>{enemyHealth} HP</strong>
+          <div className="hp-track"><div className="hp-fill enemy" style={{ width: `${enemyHp}%` }} /></div>
+          <strong>{enemyHp} HP</strong>
         </div>
 
-        <div className="shot-feedback">{shotResult}</div>
+        <div className="shot-feedback">{log}</div>
 
         <div className="tank-card player">
           <span>🛡️ Your Armored Tank</span>
-          <div className="hp-track"><div className="hp-fill player" style={{ width: `${playerHealth}%` }} /></div>
-          <strong>{playerHealth} HP</strong>
+          <div className="hp-track"><div className="hp-fill player" style={{ width: `${playerHp}%` }} /></div>
+          <strong>{playerHp} HP</strong>
         </div>
       </div>
 
       <div className="target-aim-grid">
-        <button className="primary-btn aim-btn" onClick={() => fireCannon('turret')} disabled={isFiring}>🎯 Aim Turret</button>
-        <button className="primary-btn aim-btn" onClick={() => fireCannon('hull')} disabled={isFiring}>💥 Aim Heavy Hull</button>
-        <button className="primary-btn aim-btn" onClick={() => fireCannon('tracks')} disabled={isFiring}>⚡ Aim Armor Tracks</button>
+        <button className="primary-btn aim-btn" onClick={() => fire('turret')} disabled={isFiring}>🎯 Target Turret</button>
+        <button className="primary-btn aim-btn" onClick={() => fire('hull')} disabled={isFiring}>💥 Target Heavy Hull</button>
+        <button className="primary-btn aim-btn" onClick={() => fire('tracks')} disabled={isFiring}>⚡ Target Armor Tracks</button>
       </div>
 
       {showModal && (
         <VictoryModal
           title="Cyber Tank Blitz"
           score={score}
-          result={enemyHealth === 0 ? 'win' : 'lose'}
-          message={enemyHealth === 0 ? 'Enemy tank destroyed!' : 'Your tank was breached!'}
+          result={enemyHp === 0 ? 'win' : 'lose'}
+          message={enemyHp === 0 ? 'Enemy tank destroyed!' : 'Your tank armor breached!'}
           onPlayAgain={restart}
         />
       )}
@@ -457,12 +603,14 @@ const TankDuelGame = () => {
   );
 };
 
-// 4. PENALTY SOCCER SHOOTOUT (HOT ⚽)
+// ==========================================
+// 4. PENALTY SOCCER SHOOTOUT
+// ==========================================
 const PenaltyShootoutGame = () => {
   const [goals, setGoals] = useState(0);
   const [attempts, setAttempts] = useState(0);
   const [keeperPos, setKeeperPos] = useState('center');
-  const [feedback, setFeedback] = useState('Pick a target corner to shoot!');
+  const [feedback, setFeedback] = useState('Pick a goal corner to shoot!');
   const [showModal, setShowModal] = useState(false);
 
   const shoot = (corner) => {
@@ -481,18 +629,18 @@ const PenaltyShootoutGame = () => {
       setFeedback(`⚽ GOOOOOAL! Curved shot into ${corner.replace('-', ' ')}!`);
     } else {
       sounds.playWrong();
-      setFeedback(`🧤 SAVED! Goalkeeper blocked your shot at ${keeperPick}!`);
+      setFeedback(`🧤 SAVED! Goalkeeper blocked shot at ${keeperPick}!`);
     }
 
     if (nextAttempts === 5) {
-      setTimeout(() => setShowModal(true), 800);
+      setTimeout(() => setShowModal(true), 700);
     }
   };
 
   const restart = () => {
     setGoals(0);
     setAttempts(0);
-    setFeedback('Pick a target corner to shoot!');
+    setFeedback('Pick a goal corner to shoot!');
     setShowModal(false);
   };
 
@@ -502,7 +650,7 @@ const PenaltyShootoutGame = () => {
       <p>{feedback}</p>
 
       <div className="score-row">
-        <span>🥅 Goals: {goals} / 5</span>
+        <span>🥅 Goals Scored: {goals} / 5</span>
         <span>Shots Taken: {attempts} / 5</span>
       </div>
 
@@ -523,7 +671,7 @@ const PenaltyShootoutGame = () => {
           title="Penalty Soccer Shootout"
           score={goals * 200}
           result={goals >= 3 ? 'win' : 'attempted'}
-          message={`Shootout complete! Scored ${goals} goals out of 5!`}
+          message={`Penalty Shootout finished! Scored ${goals} goals out of 5!`}
           onPlayAgain={restart}
         />
       )}
@@ -531,7 +679,9 @@ const PenaltyShootoutGame = () => {
   );
 };
 
-// 5. NINJA BLADE SLASH (HOT 🗡️)
+// ==========================================
+// 5. NINJA BLADE SLASH
+// ==========================================
 const NinjaSlashGame = () => {
   const [fruits, setFruits] = useState([
     { id: 1, symbol: '🍉', sliced: false },
@@ -547,7 +697,7 @@ const NinjaSlashGame = () => {
     if (symbol === '💣') {
       sounds.playWrong();
       setCombo(0);
-      alert('💣 BOMB HIT! Combo reset!');
+      alert('💣 BOMB EXPLOSION! Multiplier reset!');
       return;
     }
 
@@ -566,7 +716,7 @@ const NinjaSlashGame = () => {
           f.id === id ? { id: Date.now() + Math.random(), symbol: randomFrom(items), sliced: false } : f
         )
       );
-    }, 400);
+    }, 350);
   };
 
   const restart = () => {
@@ -578,7 +728,7 @@ const NinjaSlashGame = () => {
   return (
     <div className="game-page">
       <h2>🗡️ Ninja Blade Slash</h2>
-      <p>Swipe or tap airborne fruits to slice them in half! Avoid bombs!</p>
+      <p>Tap or hover fast to slice fruits with katana swipes! Avoid bombs!</p>
 
       <div className="score-row">
         <span>⭐ Score: {score}</span>
@@ -604,7 +754,7 @@ const NinjaSlashGame = () => {
           title="Ninja Blade Slash"
           score={score}
           result="win"
-          message={`Blade master! Score: ${score}`}
+          message={`Ninja slashing complete! Score: ${score}`}
           onPlayAgain={restart}
         />
       )}
@@ -612,7 +762,9 @@ const NinjaSlashGame = () => {
   );
 };
 
-// 6. ZOMBIE OUTBREAK DEFENSE (HOT 🧟)
+// ==========================================
+// 6. ZOMBIE OUTBREAK DEFENSE
+// ==========================================
 const ZombieSurvivalGame = () => {
   const [zombies, setZombies] = useState([
     { id: 1, hp: 3, type: '🧟' },
@@ -652,11 +804,11 @@ const ZombieSurvivalGame = () => {
   return (
     <div className="game-page">
       <h2>🧟 Zombie Outbreak Defense</h2>
-      <p>Tap rapid fire on invading zombie hordes before they reach your barricade!</p>
+      <p>Tap rapid fire on invading zombie hordes before they breach your barricade!</p>
 
       <div className="score-row">
         <span>💀 Zombies Eliminated: {kills}</span>
-        <span>⭐ Defense Points: {score}</span>
+        <span>⭐ Defense Score: {score}</span>
       </div>
 
       <div className="zombie-horde-grid">
@@ -675,7 +827,7 @@ const ZombieSurvivalGame = () => {
           title="Zombie Outbreak Defense"
           score={score}
           result="win"
-          message={`Outbreak repelled! Eliminated ${kills} zombies!`}
+          message={`Zombies repelled! Total Kills: ${kills}`}
           onPlayAgain={restart}
         />
       )}
@@ -683,7 +835,9 @@ const ZombieSurvivalGame = () => {
   );
 };
 
-// --- EXISTING GAMES CONTINUED ---
+// ==========================================
+// 7. CONNECT FOUR
+// ==========================================
 const ConnectFourGame = () => {
   const ROWS = 6;
   const COLS = 7;
@@ -860,7 +1014,9 @@ const ConnectFourGame = () => {
   );
 };
 
-// SPEED TYPER RUSH
+// ==========================================
+// 8. SPEED TYPER RUSH
+// ==========================================
 const SpeedTyperGame = () => {
   const TYPING_PASSAGES = [
     "Fast typing requires focus, precision, and quick muscle memory to master.",
@@ -986,7 +1142,9 @@ const SpeedTyperGame = () => {
   );
 };
 
-// REFLEX RUSH
+// ==========================================
+// 9. REFLEX RUSH (Whack-a-Mole)
+// ==========================================
 const WhackAMoleGame = () => {
   const [moles, setMoles] = useState(Array(9).fill({ active: false, type: 'normal' }));
   const [score, setScore] = useState(0);
@@ -1109,7 +1267,9 @@ const WhackAMoleGame = () => {
   );
 };
 
-// BRICK BREAKER
+// ==========================================
+// 10. BRICK BREAKER ARCADE
+// ==========================================
 const BrickBreakerGame = () => {
   const canvasRef = useRef(null);
   const [score, setScore] = useState(0);
@@ -1268,7 +1428,7 @@ const BrickBreakerGame = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      if (canvas) canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('mousemove', handleMouseMove);
       cancelAnimationFrame(animId);
     };
   }, [gameState]);
@@ -1329,7 +1489,9 @@ const BrickBreakerGame = () => {
   );
 };
 
-// TIC TAC TOE
+// ==========================================
+// 11. TIC TAC TOE
+// ==========================================
 const TicTacToeGame = () => {
   const WIN_LINES = [
     [0, 1, 2], [3, 4, 5], [6, 7, 8],
@@ -1441,7 +1603,9 @@ const TicTacToeGame = () => {
   );
 };
 
-// SNAKE DELUXE
+// ==========================================
+// 12. SNAKE DELUXE
+// ==========================================
 const SnakeGame = () => {
   const GRID_SIZE = 12;
   const initialSnake = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }];
@@ -1559,7 +1723,9 @@ const SnakeGame = () => {
   );
 };
 
-// ROCK PAPER SCISSORS DUEL
+// ==========================================
+// 13. ROCK PAPER SCISSORS DUEL
+// ==========================================
 const RockPaperScissorsGame = () => {
   const options = ['Rock ✊', 'Paper ✋', 'Scissors ✌️'];
   const [pChoice, setPChoice] = useState('');
@@ -1615,7 +1781,9 @@ const RockPaperScissorsGame = () => {
   );
 };
 
-// MEMORY CARD FLIP
+// ==========================================
+// 14. MEMORY CARD FLIP
+// ==========================================
 const MemoryGame = () => {
   const emojis = ['🚀', '👾', '🌈', '💎', '🔥', '⚡', '🎯', '🔮'];
   const [cards, setCards] = useState([]);
@@ -1688,7 +1856,9 @@ const MemoryGame = () => {
   );
 };
 
-// QUIZ MASTER
+// ==========================================
+// 15. QUIZ MASTER
+// ==========================================
 const QuizMasterGame = () => {
   const QUESTIONS = [
     { q: "Which planet is known as the Red Planet?", options: ["Venus", "Mars", "Jupiter", "Saturn"], answer: "Mars" },
@@ -1781,7 +1951,9 @@ const QuizMasterGame = () => {
   );
 };
 
-// NUMBER GUESSING
+// ==========================================
+// 16. NUMBER GUESSING
+// ==========================================
 const NumberGuessGame = () => {
   const [secret, setSecret] = useState(() => Math.floor(Math.random() * 100) + 1);
   const [guess, setGuess] = useState('');
@@ -1851,7 +2023,9 @@ const NumberGuessGame = () => {
   );
 };
 
-// WORD SCRAMBLE
+// ==========================================
+// 17. WORD SCRAMBLE
+// ==========================================
 const WordScrambleGame = () => {
   const WORDS = ['REACT', 'ARCADE', 'GAMING', 'SOCKET', 'SYNTH', 'MATRIX', 'CYBER', 'PIXEL'];
   const [targetWord, setTargetWord] = useState('');
@@ -1918,7 +2092,9 @@ const WordScrambleGame = () => {
   );
 };
 
-// MATH SPEED CHALLENGE
+// ==========================================
+// 18. MATH SPEED CHALLENGE
+// ==========================================
 const MathSpeedGame = () => {
   const [numA, setNumA] = useState(5);
   const [numB, setNumB] = useState(7);
@@ -2017,7 +2193,9 @@ const MathSpeedGame = () => {
   );
 };
 
-// SIMON SAYS
+// ==========================================
+// 19. SIMON SAYS TONE BLITZ
+// ==========================================
 const SimonSaysGame = () => {
   const colors = ['red', 'blue', 'green', 'yellow'];
   const freqs = { red: 300, blue: 400, green: 500, yellow: 600 };
@@ -2090,7 +2268,9 @@ const SimonSaysGame = () => {
   );
 };
 
-// 2048 PUZZLE
+// ==========================================
+// 20. 2048 PUZZLE (Full Arrow Keys & Swipe Algorithm)
+// ==========================================
 const Game2048 = () => {
   const [grid, setGrid] = useState(() => {
     const g = Array.from({ length: 4 }, () => Array(4).fill(0));
@@ -2122,7 +2302,9 @@ const Game2048 = () => {
   );
 };
 
-// Main Router
+// ==========================================
+// MAIN GAME ROUTER
+// ==========================================
 const GameLibrary = ({ slug }) => {
   switch (slug) {
     case 'space-shooter': return <SpaceShooterGame />;
@@ -2148,7 +2330,7 @@ const GameLibrary = ({ slug }) => {
     default:
       return (
         <div className="game-page">
-          <h2>Game Available in Arcade</h2>
+          <h2>Game Ready in Arcade</h2>
           <p>Select a game from the homepage library!</p>
         </div>
       );
