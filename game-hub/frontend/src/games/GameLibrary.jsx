@@ -2303,10 +2303,1224 @@ const Game2048 = () => {
 };
 
 // ==========================================
+// 21. CYBER BLACKJACK 21 (Adult Casino Strategy)
+// ==========================================
+const CyberBlackjackGame = () => {
+  const [bankroll, setBankroll] = useState(1000);
+  const [currentBet, setCurrentBet] = useState(50);
+  const [playerHand, setPlayerHand] = useState([]);
+  const [dealerHand, setDealerHand] = useState([]);
+  const [gameState, setGameState] = useState('betting'); // betting, playing, dealerTurn, finished
+  const [message, setMessage] = useState('Place your bet and click Deal to start!');
+
+  const SUITS = ['♠️', '♥️', '♦️', '♣️'];
+  const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+
+  const createDeck = () => {
+    const deck = [];
+    for (const suit of SUITS) {
+      for (const rank of RANKS) {
+        let val = parseInt(rank);
+        if (['J', 'Q', 'K'].includes(rank)) val = 10;
+        if (rank === 'A') val = 11;
+        deck.push({ rank, suit, value: val, isRed: suit === '♥️' || suit === '♦️' });
+      }
+    }
+    return shuffleArray(deck);
+  };
+
+  const [deck, setDeck] = useState(createDeck);
+
+  const calculateScore = (hand) => {
+    let sum = hand.reduce((acc, c) => acc + c.value, 0);
+    let aces = hand.filter((c) => c.rank === 'A').length;
+    while (sum > 21 && aces > 0) {
+      sum -= 10;
+      aces -= 1;
+    }
+    return sum;
+  };
+
+  const dealHand = () => {
+    if (bankroll < currentBet) {
+      alert('Not enough chips! Resetting bankroll to $500.');
+      setBankroll(500);
+      return;
+    }
+
+    sounds.playDrop();
+    let currentDeck = deck.length < 15 ? createDeck() : [...deck];
+    const pCard1 = currentDeck.pop();
+    const dCard1 = currentDeck.pop();
+    const pCard2 = currentDeck.pop();
+    const dCard2 = currentDeck.pop();
+
+    const pHand = [pCard1, pCard2];
+    const dHand = [dCard1, dCard2];
+
+    setDeck(currentDeck);
+    setPlayerHand(pHand);
+    setDealerHand(dHand);
+    setBankroll((b) => b - currentBet);
+    setGameState('playing');
+
+    const pScore = calculateScore(pHand);
+    const dScore = calculateScore(dHand);
+
+    if (pScore === 21) {
+      if (dScore === 21) {
+        endRound('push', 'Push! Both hit Natural Blackjack!', dHand);
+      } else {
+        const winAmt = Math.floor(currentBet * 2.5);
+        setBankroll((b) => b + winAmt);
+        endRound('win', `BLACKJACK! 21! Won $${winAmt}!`, dHand);
+      }
+    } else {
+      setMessage('Hit, Stand, or Double Down!');
+    }
+  };
+
+  const hitPlayer = () => {
+    if (gameState !== 'playing') return;
+    sounds.playClick();
+    const currentDeck = [...deck];
+    const card = currentDeck.pop();
+    const nextHand = [...playerHand, card];
+    setDeck(currentDeck);
+    setPlayerHand(nextHand);
+
+    const score = calculateScore(nextHand);
+    if (score > 21) {
+      sounds.playWrong();
+      endRound('bust', `BUSTED! Hand value: ${score}. Lost $${currentBet}.`, dealerHand);
+    } else if (score === 21) {
+      standPlayer(nextHand);
+    }
+  };
+
+  const standPlayer = (pHand = playerHand) => {
+    if (gameState !== 'playing') return;
+    sounds.playMove();
+    setGameState('dealerTurn');
+    let currentDeck = [...deck];
+    let dHand = [...dealerHand];
+
+    let dScore = calculateScore(dHand);
+    while (dScore < 17) {
+      const card = currentDeck.pop();
+      dHand.push(card);
+      dScore = calculateScore(dHand);
+    }
+
+    setDeck(currentDeck);
+    setDealerHand(dHand);
+
+    const pScore = calculateScore(pHand);
+
+    if (dScore > 21) {
+      sounds.playWin();
+      const winAmt = currentBet * 2;
+      setBankroll((b) => b + winAmt);
+      endRound('win', `Dealer BUSTED (${dScore})! You win $${winAmt}!`, dHand);
+    } else if (pScore > dScore) {
+      sounds.playWin();
+      const winAmt = currentBet * 2;
+      setBankroll((b) => b + winAmt);
+      endRound('win', `You Win! ${pScore} beats Dealer's ${dScore}!`, dHand);
+    } else if (pScore < dScore) {
+      sounds.playLose();
+      endRound('lose', `Dealer Wins with ${dScore} vs your ${pScore}.`, dHand);
+    } else {
+      sounds.playClick();
+      setBankroll((b) => b + currentBet);
+      endRound('push', `Push (Tie)! Both scored ${pScore}. Chips returned.`, dHand);
+    }
+  };
+
+  const doubleDown = () => {
+    if (gameState !== 'playing' || bankroll < currentBet || playerHand.length !== 2) return;
+    sounds.playDrop();
+    setBankroll((b) => b - currentBet);
+    const newBet = currentBet * 2;
+    setCurrentBet(newBet);
+
+    const currentDeck = [...deck];
+    const card = currentDeck.pop();
+    const nextHand = [...playerHand, card];
+    setDeck(currentDeck);
+    setPlayerHand(nextHand);
+
+    const score = calculateScore(nextHand);
+    if (score > 21) {
+      sounds.playWrong();
+      endRound('bust', `BUSTED on Double Down (${score})! Lost $${newBet}.`, dealerHand);
+    } else {
+      standPlayer(nextHand);
+    }
+  };
+
+  const endRound = (status, text) => {
+    setGameState('finished');
+    setMessage(text);
+    if (status === 'win') sounds.playWin();
+  };
+
+  const saveScore = async () => {
+    try {
+      await api.post('/scores', {
+        game: 'cyber-blackjack',
+        score: bankroll,
+        result: bankroll >= 1000 ? 'win' : 'attempted',
+        duration: 60,
+      });
+      alert('Blackjack bankroll score saved to global leaderboard!');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const playerScore = calculateScore(playerHand);
+  const dealerScore = gameState === 'playing' ? (dealerHand[0]?.value || 0) : calculateScore(dealerHand);
+
+  return (
+    <div className="game-page">
+      <div className="game-header">
+        <h2>🃏 Cyber Blackjack 21</h2>
+        <div className="bankroll-chip-pill">💰 Bankroll: ${bankroll}</div>
+      </div>
+      <p>{message}</p>
+
+      {/* Felt Blackjack Table */}
+      <div className="casino-table">
+        {/* Dealer Hand */}
+        <div className="hand-section">
+          <h3>🤖 Dealer's Hand {dealerHand.length > 0 && `(${dealerScore})`}</h3>
+          <div className="cards-row">
+            {dealerHand.map((c, idx) => {
+              const hidden = idx === 1 && gameState === 'playing';
+              return (
+                <div key={idx} className={`playing-card ${hidden ? 'hidden' : c.isRed ? 'red' : 'black'}`}>
+                  {hidden ? '🂠' : `${c.rank} ${c.suit}`}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="table-divider" />
+
+        {/* Player Hand */}
+        <div className="hand-section">
+          <h3>👤 Your Hand {playerHand.length > 0 && `(${playerScore})`}</h3>
+          <div className="cards-row">
+            {playerHand.map((c, idx) => (
+              <div key={idx} className={`playing-card ${c.isRed ? 'red' : 'black'}`}>
+                {c.rank} {c.suit}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Controls & Betting */}
+      {gameState === 'betting' || gameState === 'finished' ? (
+        <div className="blackjack-bet-controls">
+          <label>Choose Bet Amount:</label>
+          <div className="chips-picker">
+            {[25, 50, 100, 250].map((amt) => (
+              <button
+                key={amt}
+                className={`chip-btn ${currentBet === amt ? 'active' : ''}`}
+                onClick={() => { setCurrentBet(amt); sounds.playClick(); }}
+              >
+                🪙 ${amt}
+              </button>
+            ))}
+          </div>
+          <button className="primary-btn deal-btn" onClick={dealHand}>
+            🃏 Deal Hand (${currentBet})
+          </button>
+        </div>
+      ) : (
+        <div className="blackjack-actions">
+          <button className="primary-btn" onClick={hitPlayer} disabled={gameState !== 'playing'}>
+            ➕ Hit (Take Card)
+          </button>
+          <button className="secondary-btn" onClick={() => standPlayer()} disabled={gameState !== 'playing'}>
+            ✋ Stand (Hold)
+          </button>
+          <button
+            className="secondary-btn"
+            onClick={doubleDown}
+            disabled={gameState !== 'playing' || playerHand.length !== 2 || bankroll < currentBet}
+          >
+            ⚡ Double Down (${currentBet * 2})
+          </button>
+        </div>
+      )}
+
+      <div className="game-actions" style={{ marginTop: '20px' }}>
+        <button className="primary-btn" onClick={saveScore}>
+          ⭐ Save Bankroll Score (${bankroll})
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// 22. TEXAS HOLD'EM POKER (Adult Casino Strategy)
+// ==========================================
+const PokerShowdownGame = () => {
+  const [chips, setChips] = useState(1500);
+  const [pot, setPot] = useState(0);
+  const [stage, setStage] = useState('betting'); // betting, flop, turn, river, showdown
+  const [playerHand, setPlayerHand] = useState([]);
+  const [dealerHand, setDealerHand] = useState([]);
+  const [communityCards, setCommunityCards] = useState([]);
+  const [deck, setDeck] = useState([]);
+  const [log, setLog] = useState("Place blinds and deal Texas Hold'em!");
+  const [winnerMessage, setWinnerMessage] = useState('');
+
+  const SUITS = ['♠️', '♥️', '♦️', '♣️'];
+  const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+
+  const createDeck = () => {
+    const d = [];
+    for (let s of SUITS) {
+      for (let r of RANKS) {
+        let val = RANKS.indexOf(r) + 2;
+        d.push({ rank: r, suit: s, value: val, isRed: s === '♥️' || s === '♦️' });
+      }
+    }
+    return shuffleArray(d);
+  };
+
+  const startHand = () => {
+    sounds.playDrop();
+    const newDeck = createDeck();
+    const pHand = [newDeck.pop(), newDeck.pop()];
+    const dHand = [newDeck.pop(), newDeck.pop()];
+
+    setDeck(newDeck);
+    setPlayerHand(pHand);
+    setDealerHand(dHand);
+    setCommunityCards([]);
+    setChips((c) => c - 50);
+    setPot(100);
+    setStage('flop');
+    setLog('Pre-Flop dealt! Dealer matched $50 blind. Click Flop to reveal 3 community cards!');
+    setWinnerMessage('');
+  };
+
+  const revealFlop = () => {
+    sounds.playClick();
+    const currentDeck = [...deck];
+    const flop = [currentDeck.pop(), currentDeck.pop(), currentDeck.pop()];
+    setDeck(currentDeck);
+    setCommunityCards(flop);
+    setStage('turn');
+    setLog('Flop revealed! Bet or Check for the Turn card.');
+  };
+
+  const revealTurn = () => {
+    sounds.playClick();
+    const currentDeck = [...deck];
+    const turnCard = currentDeck.pop();
+    setDeck(currentDeck);
+    setCommunityCards((prev) => [...prev, turnCard]);
+    setStage('river');
+    setLog('Turn card revealed! Final bet round before the River card.');
+  };
+
+  const revealRiver = () => {
+    sounds.playClick();
+    const currentDeck = [...deck];
+    const riverCard = currentDeck.pop();
+    const allCommunity = [...communityCards, riverCard];
+    setDeck(currentDeck);
+    setCommunityCards(allCommunity);
+    setStage('showdown');
+    evaluateShowdown(allCommunity);
+  };
+
+  const evaluateHandRank = (cards) => {
+    const values = cards.map((c) => c.value).sort((a, b) => b - a);
+    const suitCounts = {};
+    cards.forEach((c) => { suitCounts[c.suit] = (suitCounts[c.suit] || 0) + 1; });
+    const isFlush = Object.values(suitCounts).some((cnt) => cnt >= 5);
+
+    const counts = {};
+    values.forEach((v) => { counts[v] = (counts[v] || 0) + 1; });
+    const freq = Object.values(counts).sort((a, b) => b - a);
+
+    if (freq[0] === 4) return { rank: 8, name: 'Four of a Kind', score: 800 + values[0] };
+    if (freq[0] === 3 && freq[1] >= 2) return { rank: 7, name: 'Full House', score: 700 + values[0] };
+    if (isFlush) return { rank: 6, name: 'Flush', score: 600 + values[0] };
+    if (freq[0] === 3) return { rank: 4, name: 'Three of a Kind', score: 400 + values[0] };
+    if (freq[0] === 2 && freq[1] === 2) return { rank: 3, name: 'Two Pair', score: 300 + values[0] };
+    if (freq[0] === 2) return { rank: 2, name: 'Pair', score: 200 + values[0] };
+    return { rank: 1, name: 'High Card', score: 100 + values[0] };
+  };
+
+  const evaluateShowdown = (commCards) => {
+    const pEval = evaluateHandRank([...playerHand, ...commCards]);
+    const dEval = evaluateHandRank([...dealerHand, ...commCards]);
+
+    if (pEval.score > dEval.score) {
+      sounds.playWin();
+      setChips((c) => c + pot);
+      setWinnerMessage(`🏆 YOU WIN POT ($${pot})! ${pEval.name} beats Dealer's ${dEval.name}!`);
+    } else if (pEval.score < dEval.score) {
+      sounds.playLose();
+      setWinnerMessage(`💥 DEALER WINS POT ($${pot}) with ${dEval.name} vs your ${pEval.name}.`);
+    } else {
+      sounds.playClick();
+      setChips((c) => c + pot / 2);
+      setWinnerMessage(`🤝 SPLIT POT! Both players held ${pEval.name}.`);
+    }
+  };
+
+  const placeBet = (amt) => {
+    if (chips < amt) return alert('Not enough chips!');
+    sounds.playDrop();
+    setChips((c) => c - amt);
+    setPot((p) => p + amt * 2);
+    setLog(`You bet $${amt}. Dealer matched $${amt}! Total Pot: $${pot + amt * 2}`);
+  };
+
+  const fold = () => {
+    sounds.playWrong();
+    setStage('betting');
+    setWinnerMessage('You folded. Dealer takes pot.');
+    setPot(0);
+  };
+
+  return (
+    <div className="game-page">
+      <div className="game-header">
+        <h2>♦️ Texas Hold'em Poker</h2>
+        <div className="bankroll-chip-pill">🪙 Chips: ${chips} | 🏆 Pot: ${pot}</div>
+      </div>
+      <p>{log}</p>
+
+      {/* Poker Table Grid */}
+      <div className="poker-table">
+        {/* Dealer Hole Cards */}
+        <div className="poker-seat">
+          <span>🤖 Cyber Dealer</span>
+          <div className="cards-row">
+            {dealerHand.map((c, i) => {
+              const hidden = stage !== 'showdown';
+              return (
+                <div key={i} className={`playing-card ${hidden ? 'hidden' : c.isRed ? 'red' : 'black'}`}>
+                  {hidden ? '🂠' : `${c.rank} ${c.suit}`}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Community Cards */}
+        <div className="community-board">
+          <span>🌐 Community Cards (Flop / Turn / River)</span>
+          <div className="cards-row">
+            {Array.from({ length: 5 }, (_, i) => {
+              const card = communityCards[i];
+              return card ? (
+                <div key={i} className={`playing-card ${card.isRed ? 'red' : 'black'}`}>
+                  {card.rank} {card.suit}
+                </div>
+              ) : (
+                <div key={i} className="playing-card placeholder">🂠</div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Player Hole Cards */}
+        <div className="poker-seat">
+          <span>👤 Your Hole Cards</span>
+          <div className="cards-row">
+            {playerHand.map((c, i) => (
+              <div key={i} className={`playing-card ${c.isRed ? 'red' : 'black'}`}>
+                {c.rank} {c.suit}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {winnerMessage && <div className="poker-winner-banner">{winnerMessage}</div>}
+
+      {/* Action Buttons */}
+      <div className="poker-actions">
+        {stage === 'betting' || stage === 'showdown' ? (
+          <button className="primary-btn" onClick={startHand}>
+            🃏 Deal Texas Hold'em ($50 Blind)
+          </button>
+        ) : (
+          <>
+            {stage === 'flop' && <button className="primary-btn" onClick={revealFlop}>▶️ Deal Flop (3 Cards)</button>}
+            {stage === 'turn' && <button className="primary-btn" onClick={revealTurn}>▶️ Deal Turn (4th Card)</button>}
+            {stage === 'river' && <button className="primary-btn" onClick={revealRiver}>💥 Deal River & Showdown!</button>}
+
+            <button className="secondary-btn" onClick={() => placeBet(50)}>🪙 Raise +$50</button>
+            <button className="secondary-btn" onClick={fold}>🏳️ Fold Hand</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// 23. CYBER VAULT CODEBREAKER (Adult Strategy)
+// ==========================================
+const VaultHackerGame = () => {
+  const [secretCode, setSecretCode] = useState(() => Array.from({ length: 4 }, () => Math.floor(Math.random() * 10)));
+  const [guess, setGuess] = useState(['', '', '', '']);
+  const [attempts, setAttempts] = useState([]);
+  const [attemptsLeft, setAttemptsLeft] = useState(8);
+  const [gameState, setGameState] = useState('playing'); // playing, won, lost
+  const [score, setScore] = useState(0);
+
+  const handleDigitChange = (idx, val) => {
+    if (!/^[0-9]?$/.test(val)) return;
+    const next = [...guess];
+    next[idx] = val;
+    setGuess(next);
+  };
+
+  const submitGuess = () => {
+    if (guess.some((d) => d === '')) return alert('Enter all 4 passcode digits!');
+    sounds.playDrop();
+
+    const numericGuess = guess.map(Number);
+    let bulls = 0; // exact
+    let cows = 0;  // correct digit, wrong pos
+
+    const secretCopy = [...secretCode];
+    const guessCopy = [...numericGuess];
+
+    // Find bulls
+    for (let i = 0; i < 4; i++) {
+      if (guessCopy[i] === secretCopy[i]) {
+        bulls++;
+        secretCopy[i] = null;
+        guessCopy[i] = null;
+      }
+    }
+
+    // Find cows
+    for (let i = 0; i < 4; i++) {
+      if (guessCopy[i] !== null) {
+        const foundIdx = secretCopy.indexOf(guessCopy[i]);
+        if (foundIdx !== -1) {
+          cows++;
+          secretCopy[foundIdx] = null;
+        }
+      }
+    }
+
+    const newAttempt = { guess: numericGuess.join(''), bulls, cows };
+    const nextAttempts = [newAttempt, ...attempts];
+    setAttempts(nextAttempts);
+
+    const nextLeft = attemptsLeft - 1;
+    setAttemptsLeft(nextLeft);
+    setGuess(['', '', '', '']);
+
+    if (bulls === 4) {
+      sounds.playWin();
+      const pts = nextLeft * 250 + 500;
+      setScore(pts);
+      setGameState('won');
+    } else if (nextLeft <= 0) {
+      sounds.playLose();
+      setGameState('lost');
+    } else {
+      sounds.playClick();
+    }
+  };
+
+  const restart = () => {
+    setSecretCode(Array.from({ length: 4 }, () => Math.floor(Math.random() * 10)));
+    setGuess(['', '', '', '']);
+    setAttempts([]);
+    setAttemptsLeft(8);
+    setGameState('playing');
+    setScore(0);
+  };
+
+  return (
+    <div className="game-page">
+      <div className="game-header">
+        <h2>🔐 Cyber Vault Codebreaker</h2>
+        <span className="attempts-pill">Attempts Remaining: {attemptsLeft} / 8</span>
+      </div>
+      <p>Decipher the 4-digit mainframe vault passcode! Get intelligence clues on digit precision.</p>
+
+      {/* Terminal Input Row */}
+      <div className="vault-terminal">
+        <div className="passcode-inputs">
+          {guess.map((d, i) => (
+            <input
+              key={i}
+              type="text"
+              maxLength={1}
+              value={d}
+              onChange={(e) => handleDigitChange(i, e.target.value)}
+              disabled={gameState !== 'playing'}
+              className="digit-box"
+            />
+          ))}
+        </div>
+
+        <button className="primary-btn breach-btn" onClick={submitGuess} disabled={gameState !== 'playing'}>
+          ⚡ Crack Passcode
+        </button>
+      </div>
+
+      {/* Game Result Banner */}
+      {gameState === 'won' && (
+        <div className="vault-banner win">
+          🎉 ACCESS GRANTED! Passcode: {secretCode.join('')} | Hack Score: {score} pts!
+        </div>
+      )}
+      {gameState === 'lost' && (
+        <div className="vault-banner lose">
+          🔒 FIREWALL LOCKDOWN! Secret Passcode was: {secretCode.join('')}
+        </div>
+      )}
+
+      {/* Intelligence Logs */}
+      <div className="intel-logs">
+        <h3>📊 Intelligence Feedback Logs</h3>
+        {attempts.length === 0 ? (
+          <p className="soft-txt">No passcode attempts yet. Enter 4 digits above!</p>
+        ) : (
+          attempts.map((att, i) => (
+            <div key={i} className="log-row">
+              <span className="code-tag">🔑 Passcode: {att.guess}</span>
+              <span className="bull-tag">🟢 {att.bulls} Exact Position</span>
+              <span className="cow-tag">🟡 {att.cows} Wrong Position</span>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="game-actions" style={{ marginTop: '20px' }}>
+        <button className="secondary-btn" onClick={restart}>🔄 Reset Vault Code</button>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// 24. PUB TRIVIA MASTER (Adult Trivia)
+// ==========================================
+const PubTriviaGame = () => {
+  const QUESTIONS = [
+    {
+      q: "Which director directed the iconic film 'Pulp Fiction' (1994)?",
+      opts: ["Quentin Tarantino", "Martin Scorsese", "Steven Spielberg", "Christopher Nolan"],
+      ans: 0,
+      explain: "Quentin Tarantino directed Pulp Fiction, winning the Palme d'Or at Cannes in 1994."
+    },
+    {
+      q: "Which element has the highest electrical conductivity of all metals?",
+      opts: ["Copper", "Silver", "Gold", "Aluminum"],
+      ans: 1,
+      explain: "Silver has the highest electrical conductivity, followed closely by copper and gold."
+    },
+    {
+      q: "In what year did the Berlin Wall fall, signifying the end of the Cold War era?",
+      opts: ["1985", "1989", "1991", "1993"],
+      ans: 1,
+      explain: "The Berlin Wall fell on November 9, 1989, paving the way for German reunification."
+    },
+    {
+      q: "Which classic novel begins with the famous line 'Call me Ishmael'?",
+      opts: ["Moby-Dick", "The Great Gatsby", "1984", "Pride and Prejudice"],
+      ans: 0,
+      explain: "Moby-Dick (1851) by Herman Melville begins with 'Call me Ishmael'."
+    },
+    {
+      q: "What is the approximate speed of light in a vacuum?",
+      opts: ["150,000 km/s", "300,000 km/s", "500,000 km/s", "1,000,000 km/s"],
+      ans: 1,
+      explain: "The speed of light in a vacuum is approximately 299,792 km/s (~300,000 km/s)."
+    },
+    {
+      q: "Which country produces the famous Single Malt Scotch Whiskies of Islay?",
+      opts: ["Ireland", "Scotland", "Japan", "USA"],
+      ans: 1,
+      explain: "Islands like Islay in Scotland are world-renowned for peaty single malt Scotch whiskies."
+    }
+  ];
+
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [selectedOpt, setSelectedOpt] = useState(null);
+  const [score, setScore] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
+  const handleSelect = (idx) => {
+    if (selectedOpt !== null) return;
+    setSelectedOpt(idx);
+    setShowExplanation(true);
+
+    const q = QUESTIONS[currentIdx];
+    if (idx === q.ans) {
+      sounds.playCorrect();
+      const mult = 1 + streak * 0.5;
+      setScore((s) => s + Math.floor(200 * mult));
+      setStreak((st) => st + 1);
+    } else {
+      sounds.playWrong();
+      setStreak(0);
+    }
+  };
+
+  const nextQuestion = () => {
+    sounds.playClick();
+    setSelectedOpt(null);
+    setShowExplanation(false);
+    if (currentIdx + 1 < QUESTIONS.length) {
+      setCurrentIdx((i) => i + 1);
+    } else {
+      setShowModal(true);
+    }
+  };
+
+  const restart = () => {
+    setCurrentIdx(0);
+    setSelectedOpt(null);
+    setScore(0);
+    setStreak(0);
+    setShowExplanation(false);
+    setShowModal(false);
+  };
+
+  const currentQ = QUESTIONS[currentIdx];
+
+  return (
+    <div className="game-page">
+      <div className="game-header">
+        <h2>🍷 Pub Trivia Master</h2>
+        <div className="score-row">
+          <span>⭐ Score: {score}</span>
+          <span>🔥 Streak Multiplier: x{1 + streak * 0.5}</span>
+          <span>Question: {currentIdx + 1} / {QUESTIONS.length}</span>
+        </div>
+      </div>
+
+      <div className="trivia-card">
+        <h3 className="trivia-question">{currentQ.q}</h3>
+
+        <div className="trivia-options">
+          {currentQ.opts.map((opt, idx) => {
+            let stateClass = '';
+            if (selectedOpt !== null) {
+              if (idx === currentQ.ans) stateClass = 'correct';
+              else if (idx === selectedOpt) stateClass = 'wrong';
+            }
+            return (
+              <button
+                key={idx}
+                className={`trivia-opt-btn ${stateClass}`}
+                onClick={() => handleSelect(idx)}
+                disabled={selectedOpt !== null}
+              >
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+
+        {showExplanation && (
+          <div className="trivia-explanation">
+            <p>💡 {currentQ.explain}</p>
+            <button className="primary-btn" onClick={nextQuestion}>
+              {currentIdx + 1 === QUESTIONS.length ? '🏆 View Final Results' : '▶️ Next Question'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {showModal && (
+        <VictoryModal
+          title="Pub Trivia Master"
+          score={score}
+          result={score >= 600 ? 'win' : 'attempted'}
+          message={`Pub Trivia complete! Final Score: ${score} pts!`}
+          onPlayAgain={restart}
+        />
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// 25. SPIN THE BOTTLE: TRUTH OR DARE (Spicy Adult Party)
+// ==========================================
+const TruthOrDareGame = () => {
+  const [rotation, setRotation] = useState(0);
+  const [isSpinning, setIsSpinning] = useState(false);
+  const [activePrompt, setActivePrompt] = useState(null);
+  const [promptType, setPromptType] = useState(null);
+  const [score, setScore] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
+
+  const TRUTHS = [
+    "What was your most memorable romantic or passionate kiss?",
+    "What is your guilty pleasure secret fantasy?",
+    "What single quality turns you on the fastest in someone?",
+    "Have you ever had an intense secret crush on a close friend?",
+    "What is the boldest romantic move you have ever pulled off?",
+    "If you could spend 24 hours alone on an island with anyone, who would it be?",
+    "What is the most attractive compliment you love receiving?"
+  ];
+
+  const DARES = [
+    "Give your partner or opponent a 20-second neck or shoulder massage.",
+    "Whisper your favorite romantic secret into your partner's ear.",
+    "Stare deeply into your partner's eyes for 30 seconds without laughing.",
+    "Perform your best 10-second seductive runway dance.",
+    "Feed your partner a piece of fruit or chocolate with your eyes closed.",
+    "Send a romantic or playful flirty text message to your crush right now!",
+    "Give your partner a gentle kiss on the cheek or hand with full drama."
+  ];
+
+  const spinBottle = () => {
+    if (isSpinning) return;
+    setIsSpinning(true);
+    setActivePrompt(null);
+    sounds.playMove();
+
+    const extraRounds = 5 + Math.floor(Math.random() * 5);
+    const targetAngle = rotation + extraRounds * 360 + Math.floor(Math.random() * 360);
+    setRotation(targetAngle);
+
+    setTimeout(() => {
+      setIsSpinning(false);
+      sounds.playWin();
+      const type = Math.random() > 0.5 ? 'truth' : 'dare';
+      setPromptType(type);
+      const list = type === 'truth' ? TRUTHS : DARES;
+      setActivePrompt(randomFrom(list));
+    }, 2500);
+  };
+
+  const completeChallenge = () => {
+    sounds.playCorrect();
+    setScore((s) => s + 150);
+    setCompletedCount((c) => c + 1);
+    setActivePrompt(null);
+    setPromptType(null);
+  };
+
+  return (
+    <div className="game-page">
+      <div className="game-header">
+        <h2>🍾 Spin the Bottle: Truth or Dare</h2>
+        <div className="score-row">
+          <span>🔥 Passion Score: {score}</span>
+          <span>💋 Completed: {completedCount}</span>
+        </div>
+      </div>
+      <p>Spin the glowing bottle for spicy adult confessions and romantic dares!</p>
+
+      {/* Bottle Spinner Arena */}
+      <div className="bottle-arena">
+        <div className="bottle-circle">
+          <div className="bottle-needle" style={{ transform: `rotate(${rotation}deg)` }}>
+            🍾
+          </div>
+        </div>
+
+        <button className="primary-btn spin-bottle-btn" onClick={spinBottle} disabled={isSpinning}>
+          {isSpinning ? '🌀 Spinning Bottle...' : '🍾 Spin the Naughty Bottle!'}
+        </button>
+      </div>
+
+      {/* Challenge Card */}
+      {activePrompt && (
+        <div className={`spicy-challenge-card ${promptType}`}>
+          <h3>{promptType === 'truth' ? '🙈 NAUGHTY TRUTH' : '🔥 SPICY DARE'}</h3>
+          <p className="prompt-text">"{activePrompt}"</p>
+          <button className="primary-btn complete-btn" onClick={completeChallenge}>
+            ✨ Challenge Completed! (+150 pts)
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// 26. DESIRE ROULETTE: COUPLES WHEEL (Spicy Adult)
+// ==========================================
+const DesireRouletteGame = () => {
+  const [rotation, setRotation] = useState(0);
+  const [isSpinning, setIsSpinning] = useState(false);
+  const [result, setResult] = useState(null);
+  const [score, setScore] = useState(0);
+
+  const SECTORS = [
+    { title: "💋 Passionate Kiss", desc: "Give a 15-second romantic kiss to your partner!", color: "#ec4899" },
+    { title: "🔥 Secret Confession", desc: "Reveal one secret attraction or desire you have never shared.", color: "#f97316" },
+    { title: "💆 30-Sec Massage", desc: "Give a 30-second soothing shoulder or back massage.", color: "#a855f7" },
+    { title: "🍷 Flirt & Drink", desc: "Take a sip of your drink and whisper a sexy compliment.", color: "#ef4444" },
+    { title: "💃 Romantic Dance", desc: "Slow dance together for 1 minute to romantic music.", color: "#10b981" },
+    { title: "🎁 Wild Desire Card", desc: "Partner gets to pick any dare for you to complete!", color: "#f59e0b" }
+  ];
+
+  const spinWheel = () => {
+    if (isSpinning) return;
+    setIsSpinning(true);
+    setResult(null);
+    sounds.playDrop();
+
+    const extraSpins = 6 + Math.floor(Math.random() * 4);
+    const landingIdx = Math.floor(Math.random() * SECTORS.length);
+    const sectorAngle = 360 / SECTORS.length;
+    const targetAngle = rotation + extraSpins * 360 + landingIdx * sectorAngle;
+
+    setRotation(targetAngle);
+
+    setTimeout(() => {
+      setIsSpinning(false);
+      sounds.playWin();
+      setResult(SECTORS[landingIdx]);
+      setScore((s) => s + 200);
+    }, 2800);
+  };
+
+  return (
+    <div className="game-page">
+      <div className="game-header">
+        <h2>🔥 Desire Roulette: Couples Wheel</h2>
+        <div className="score-row">
+          <span>💖 Intimacy Points: {score}</span>
+        </div>
+      </div>
+      <p>Spin the glowing desire wheel for romantic challenges, wild dares & intense chemistry!</p>
+
+      <div className="desire-wheel-container">
+        <div className="wheel-pointer">▼</div>
+        <div className="desire-wheel" style={{ transform: `rotate(${rotation}deg)` }}>
+          {SECTORS.map((sec, i) => (
+            <div
+              key={i}
+              className="wheel-sector"
+              style={{
+                transform: `rotate(${i * (360 / SECTORS.length)}deg)`,
+                background: sec.color
+              }}
+            >
+              <span>{sec.title}</span>
+            </div>
+          ))}
+        </div>
+
+        <button className="primary-btn spin-wheel-btn" onClick={spinWheel} disabled={isSpinning}>
+          {isSpinning ? '🔥 Spinning Desire Wheel...' : '🎡 Spin Desire Wheel!'}
+        </button>
+      </div>
+
+      {result && (
+        <div className="desire-result-card">
+          <h3>{result.title}</h3>
+          <p>{result.desc}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// 27. FLIRT CHEMISTRY & LOVE TESTER (Spicy Romance)
+// ==========================================
+const LoveTesterGame = () => {
+  const [name1, setName1] = useState('');
+  const [name2, setName2] = useState('');
+  const [answers, setAnswers] = useState([0, 0, 0]);
+  const [result, setResult] = useState(null);
+
+  const QUESTIONS = [
+    {
+      q: "What is your ideal romantic date night vibe?",
+      opts: ["🍷 Candlelight Wine & Deep Conversations", "🔥 Spicy Club & Dancing all night", "🌙 Midnight Stargazing & Cuddles"]
+    },
+    {
+      q: "What triggers maximum romantic attraction for you?",
+      opts: ["👁️ Intense Eye Contact & Flirty Smiles", "💬 Intellectual Wit & Humorous Banter", "✨ Physical Touch & Warm Hugs"]
+    },
+    {
+      q: "How do you prefer expressing romantic affection?",
+      opts: ["💋 Passionate Kisses & Cuddling", "🎁 Surprise Gifts & Love Letters", "⚡ Spontaneous Adventures Together"]
+    }
+  ];
+
+  const calculateLoveScore = () => {
+    if (!name1.trim() || !name2.trim()) return alert('Enter both lover names to calculate chemistry!');
+    sounds.playWin();
+
+    // Deterministic love score based on name hash + quiz choices
+    const combined = (name1 + name2).toLowerCase().replace(/[^a-z]/g, '');
+    let charSum = 0;
+    for (let i = 0; i < combined.length; i++) charSum += combined.charCodeAt(i);
+
+    const quizBonus = answers.reduce((a, b) => a + b, 0) * 4;
+    const scorePct = 78 + ((charSum + quizBonus) % 22);
+
+    let vibe = "🔥 ULTRA HOT PASSIONATE CHEMISTRY! You two ignite sparks wherever you go!";
+    if (scorePct > 92) vibe = "💖 LEGENDARY SOULMATES! Pure magic, intense attraction & electric romantic bond!";
+
+    setResult({ scorePct, vibe });
+  };
+
+  return (
+    <div className="game-page">
+      <div className="game-header">
+        <h2>💘 Flirt Chemistry & Love Tester</h2>
+      </div>
+      <p>Test your romance score, flirt chemistry & attraction compatibility!</p>
+
+      <div className="love-tester-card">
+        <div className="names-input-row">
+          <input
+            type="text"
+            className="love-input"
+            placeholder="Your Name / Lover 1"
+            value={name1}
+            onChange={(e) => setName1(e.target.value)}
+          />
+          <span className="heart-icon">💖</span>
+          <input
+            type="text"
+            className="love-input"
+            placeholder="Crush / Lover 2"
+            value={name2}
+            onChange={(e) => setName2(e.target.value)}
+          />
+        </div>
+
+        <div className="love-quiz">
+          {QUESTIONS.map((q, qIdx) => (
+            <div key={qIdx} className="quiz-block">
+              <h4>{q.q}</h4>
+              <div className="quiz-opts">
+                {q.opts.map((opt, oIdx) => (
+                  <button
+                    key={oIdx}
+                    className={`quiz-opt ${answers[qIdx] === oIdx ? 'selected' : ''}`}
+                    onClick={() => {
+                      const next = [...answers];
+                      next[qIdx] = oIdx;
+                      setAnswers(next);
+                      sounds.playClick();
+                    }}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button className="primary-btn calc-love-btn" onClick={calculateLoveScore}>
+          🔥 Calculate Flirt Chemistry Score!
+        </button>
+
+        {result && (
+          <div className="love-result-banner">
+            <div className="score-ring">{result.scorePct}%</div>
+            <h3>{name1} & {name2}</h3>
+            <p>{result.vibe}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// 28. CYBER GLAMOUR VIP BLACKJACK (Spicy Casino)
+// ==========================================
+const GlamourBlackjackGame = () => {
+  const [chips, setChips] = useState(2000);
+  const [bet, setBet] = useState(100);
+  const [pHand, setPHand] = useState([]);
+  const [divaHand, setDivaHand] = useState([]);
+  const [gameState, setGameState] = useState('betting');
+  const [divaMood, setDivaMood] = useState('💃'); // 💃, 😉, 👑, 💅, 💋
+  const [message, setMessage] = useState('Place bet & deal hand against the Cyber Glamour Diva!');
+
+  const SUITS = ['♠️', '♥️', '♦️', '♣️'];
+  const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+
+  const createDeck = () => {
+    const d = [];
+    for (let s of SUITS) {
+      for (let r of RANKS) {
+        let v = parseInt(r);
+        if (['J', 'Q', 'K'].includes(r)) v = 10;
+        if (r === 'A') v = 11;
+        d.push({ rank: r, suit: s, value: v, isRed: s === '♥️' || s === '♦️' });
+      }
+    }
+    return shuffleArray(d);
+  };
+
+  const [deck, setDeck] = useState(createDeck);
+
+  const calcScore = (hand) => {
+    let sum = hand.reduce((a, c) => a + c.value, 0);
+    let aces = hand.filter((c) => c.rank === 'A').length;
+    while (sum > 21 && aces > 0) {
+      sum -= 10;
+      aces -= 1;
+    }
+    return sum;
+  };
+
+  const deal = () => {
+    if (chips < bet) return alert('Not enough chips!');
+    sounds.playDrop();
+    let currentDeck = deck.length < 10 ? createDeck() : [...deck];
+    const p1 = currentDeck.pop();
+    const d1 = currentDeck.pop();
+    const p2 = currentDeck.pop();
+    const d2 = currentDeck.pop();
+
+    const pCards = [p1, p2];
+    const dCards = [d1, d2];
+
+    setDeck(currentDeck);
+    setPHand(pCards);
+    setDivaHand(dCards);
+    setChips((c) => c - bet);
+    setGameState('playing');
+    setDivaMood('😉');
+    setMessage('Cyber Diva winks! Hit or Stand?');
+  };
+
+  const hit = () => {
+    sounds.playClick();
+    const currentDeck = [...deck];
+    const card = currentDeck.pop();
+    const nextHand = [...pHand, card];
+    setDeck(currentDeck);
+    setPHand(nextHand);
+
+    const score = calcScore(nextHand);
+    if (score > 21) {
+      sounds.playWrong();
+      setDivaMood('💅');
+      setGameState('finished');
+      setMessage(`BUSTED! Hand ${score}. Diva wins the round!`);
+    }
+  };
+
+  const stand = () => {
+    sounds.playMove();
+    let currentDeck = [...deck];
+    let dCards = [...divaHand];
+    let dScore = calcScore(dCards);
+
+    while (dScore < 17) {
+      dCards.push(currentDeck.pop());
+      dScore = calcScore(dCards);
+    }
+
+    setDeck(currentDeck);
+    setDivaHand(dCards);
+    setGameState('finished');
+
+    const pScore = calcScore(pHand);
+    if (dScore > 21 || pScore > dScore) {
+      sounds.playWin();
+      setChips((c) => c + bet * 2);
+      setDivaMood('💋');
+      setMessage(`🏆 VIP WIN! You beat Diva's hand (${dScore})! Won $${bet * 2}!`);
+    } else if (pScore < dScore) {
+      sounds.playLose();
+      setDivaMood('👑');
+      setMessage(`Diva wins with ${dScore} vs your ${pScore}. Better luck next time!`);
+    } else {
+      setChips((c) => c + bet);
+      setMessage(`Push (Tie)! Chips returned.`);
+    }
+  };
+
+  return (
+    <div className="game-page">
+      <div className="game-header">
+        <h2>💃 Cyber Glamour VIP Blackjack</h2>
+        <div className="bankroll-chip-pill">💎 VIP Chips: ${chips}</div>
+      </div>
+      <p>{message}</p>
+
+      <div className="glamour-table">
+        <div className="diva-avatar-box">
+          <span className="diva-emoji">{divaMood}</span>
+          <span>Cyber Diva Dealer</span>
+        </div>
+
+        <div className="cards-row">
+          {divaHand.map((c, i) => {
+            const hidden = i === 1 && gameState === 'playing';
+            return (
+              <div key={i} className={`playing-card ${hidden ? 'hidden' : c.isRed ? 'red' : 'black'}`}>
+                {hidden ? '🂠' : `${c.rank} ${c.suit}`}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="table-divider" />
+
+        <div className="cards-row">
+          {pHand.map((c, i) => (
+            <div key={i} className={`playing-card ${c.isRed ? 'red' : 'black'}`}>
+              {c.rank} {c.suit}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="blackjack-actions">
+        {gameState === 'betting' || gameState === 'finished' ? (
+          <button className="primary-btn" onClick={deal}>🃏 Deal VIP Hand (${bet})</button>
+        ) : (
+          <>
+            <button className="primary-btn" onClick={hit}>➕ Hit</button>
+            <button className="secondary-btn" onClick={stand}>✋ Stand</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
 // MAIN GAME ROUTER
 // ==========================================
 const GameLibrary = ({ slug }) => {
   switch (slug) {
+    case 'truth-or-dare': return <TruthOrDareGame />;
+    case 'desire-roulette': return <DesireRouletteGame />;
+    case 'love-tester': return <LoveTesterGame />;
+    case 'glamour-blackjack': return <GlamourBlackjackGame />;
+    case 'cyber-blackjack': return <CyberBlackjackGame />;
+    case 'poker-showdown': return <PokerShowdownGame />;
+    case 'vault-hacker': return <VaultHackerGame />;
+    case 'pub-trivia': return <PubTriviaGame />;
     case 'space-shooter': return <SpaceShooterGame />;
     case 'highway-racer': return <HighwayRacerGame />;
     case 'tank-duel': return <TankDuelGame />;

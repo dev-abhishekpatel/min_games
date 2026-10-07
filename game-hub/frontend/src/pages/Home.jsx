@@ -37,15 +37,19 @@ const Home = () => {
     });
   };
 
-  const categories = ['All', '🔥 Hot Games', 'Action', 'Combat', 'Sports', 'Multiplayer', 'Arcade', 'Reflex', 'Puzzle', 'Memory', 'Word', 'Knowledge'];
+  const categories = ['All', '💋 Spicy & Romance', '🔞 Adult Games', 'Casino', 'Strategy', 'Trivia', '🔥 Hot Games', 'Action', 'Combat', 'Sports', 'Multiplayer', 'Arcade', 'Reflex', 'Puzzle', 'Memory', 'Word', 'Knowledge'];
 
   const filteredGames = useMemo(() => {
     return games.filter((game) => {
       let matchesCategory = false;
       if (activeCategory === 'All') {
         matchesCategory = true;
+      } else if (activeCategory === '💋 Spicy & Romance') {
+        matchesCategory = game.category === 'Spicy & Romance' || game.badge?.includes('SEXY');
+      } else if (activeCategory === '🔞 Adult Games') {
+        matchesCategory = game.badge?.includes('ADULT') || game.badge?.includes('SEXY') || game.category === 'Spicy & Romance' || game.category === 'Casino' || game.category === 'Strategy' || game.category === 'Trivia';
       } else if (activeCategory === '🔥 Hot Games') {
-        matchesCategory = game.badge?.includes('HOT');
+        matchesCategory = game.badge?.includes('HOT') || game.badge?.includes('SEXY');
       } else {
         matchesCategory = game.category === activeCategory;
       }
@@ -58,7 +62,7 @@ const Home = () => {
   }, [games, activeCategory, searchQuery, showOnlyFavs, favorites]);
 
   const hotGamesList = useMemo(() => {
-    return games.filter((g) => g.badge?.includes('HOT')).slice(0, 3);
+    return games.filter((g) => g.badge?.includes('HOT') || g.badge?.includes('ADULT')).slice(0, 3);
   }, [games]);
 
   return (
@@ -66,17 +70,18 @@ const Home = () => {
       {/* Hero Banner */}
       <section className="hero hero-neon">
         <div className="hero-content">
-          <p className="eyebrow">✨ MINDFRESH • HOT ACTION & MULTIPLAYER ARCADE</p>
-          <h1>High-Octane Action, Racing & Live 1v1 Games</h1>
+          <p className="eyebrow">✨ MINDFRESH • CASINO, STRATEGY & ADULT ARCADE GAMES</p>
+          <h1>High-Stakes Casino, Strategy & 1v1 Games</h1>
           <p className="subtext">
-            Play 20+ instant arcade games — Space Blasters, Turbo Racing, Tank Duels, Soccer Shootouts & Live 1v1 Duels with zero latency!
+            Play 24+ instant games — Cyber Blackjack 21, Texas Hold’em Poker, Cyber Vault Codebreaker, Pub Trivia, Space Blasters & 1v1 Live Duels!
           </p>
 
           <div className="stats-pills-row">
-            <span className="stat-pill">🔥 6 New Hot Action Games</span>
-            <span className="stat-pill">🚀 20+ Total Arcade Games</span>
-            <span className="stat-pill">⚡ 1v1 Live Multiplayer Arena</span>
-            <span className="stat-pill">🏆 Global XP Leaderboard</span>
+            <span className="stat-pill">🃏 Cyber Blackjack 21</span>
+            <span className="stat-pill">♦️ Texas Hold'em Poker</span>
+            <span className="stat-pill">🔐 Cyber Vault Hacker</span>
+            <span className="stat-pill">🍷 Pub Trivia Master</span>
+            <span className="stat-pill">⚡ 1v1 Live Arena</span>
           </div>
 
           <div className="hero-cta-row">
